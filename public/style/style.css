@@ -1,0 +1,165 @@
+header, section, footer, aside, nav, main, article, figure {
+    display: block;
+}
+
+header {
+    height: 50px;
+    width: 100%;
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    background-color: #303036;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    padding-top: 10px;
+}
+
+header a {
+    padding: 6px 6px 6px 16px;
+    text-decoration: none;
+    font-size: 25px;
+    color: #898581;
+    display: inline;
+}
+
+header a:hover {
+    color: #f9f4f0;
+}
+
+body {
+    background-color: #f4f2eb;
+}
+
+main {
+    width: 70%;
+    height: 100%;
+    padding-top: 56px;
+    padding-left: 200px;
+    display: block;
+    color: #303036;
+    font-size: 20px;
+}
+
+main a {
+    padding: 6px 8px 6px 8px;
+    text-decoration: none;
+    display: inline-block;
+    color: #292551;
+    background-color: #eceae3;
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+main a:hover {
+    color: #496571;
+}
+
+footer a {
+    padding: 6px 8px 6px 8px;
+    text-decoration: none;
+    display: inline-block;
+    color: #292551;
+    font-size: 16px;
+    background-color: #eceae3;
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+h1 {
+    font-size: 36px;
+}
+
+h2 {
+    font-size: 26px;
+}
+
+article {
+    background-color: #f0eee7;
+}
+
+.sidenav {
+    height: 100%;
+    width: 192px;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    left: 0;
+    background-color: #303036;
+    overflow-x: hidden;
+    padding-top: 70px;
+}
+
+.sidenav a {
+    padding: 6px 8px 6px 16px;
+    text-decoration: none;
+    font-size: 25px;
+    color: #898581;
+    display: block;
+}
+
+.sidenav a:hover {
+    color: #f9f4f0;
+}
+
+#togglenav {
+    font-size: 32px;
+}
+
+@media screen and (max-width: 720px) {
+    main {
+        padding-top: 12px;
+        padding-left: 128px;
+    }
+    .sidenav {
+        width: 120px;
+        padding-top: 15px;
+    }
+    .sidenav a {
+        font-size: 18px;
+    }
+    .sidenav, .hidenav a {
+        font-size: 22px;
+    }
+}
+
+code {
+    padding: 6px 8px 6px 8px;
+    display: block;
+}
+
+.ast {
+    background-color: #171824;
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+.inline {
+    background-color: #171824;
+    font-family: "Lucida Console", Monaco, monospace;
+    padding: 2px 2px 2px 2px;
+    font-size: 16px;
+    display: inline-block;
+}
+
+.block {
+    background-color: #171824;
+    font-family: "Lucida Console", Monaco, monospace;
+}
+
+.amp-lineno {
+    color: #575864;
+}
+
+.amp-generic {
+    color: #f9e9d5;
+}
+
+.amp-keyword {
+    color: #b959d5;
+}
+
+.amp-string {
+    color: #59a965;
+}
+
+.amp-operator {
+    color: #6979ff;
+}
