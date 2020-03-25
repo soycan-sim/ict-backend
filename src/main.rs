@@ -1,3 +1,5 @@
+#![feature(async_closure)]
+
 use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::num::ParseIntError;
@@ -6,6 +8,7 @@ use tokio_postgres::{self as psql, NoTls, Error as DbError};
 use actix_web::{get, web, http, ResponseError, App, HttpServer, Responder, HttpResponse};
 
 pub mod template;
+pub mod path;
 
 #[derive(Debug)]
 pub enum Error {
