@@ -12,6 +12,8 @@ pub enum Error {
     Cmdline(String),
     Useradd,
     CreateDb,
+    ResourceNotFound(String),
+    IllegalResource(String),
 }
 
 impl Display for Error {
@@ -29,6 +31,8 @@ impl Display for Error {
                 f,
                 "creating the database `circus` failed (`createdb ... circus`)"
             ),
+            Error::ResourceNotFound(res) => write!(f, "resource not found: {:?}", res),
+            Error::IllegalResource(res) => write!(f, "illegal resources: {:?}", res),
         }
     }
 }

@@ -53,7 +53,7 @@ pub async fn wasm(_data: web::Data<ServerData>, info: web::Path<String>) -> Resu
 pub async fn articles(data: web::Data<ServerData>, info: web::Path<String>) -> Result<impl Responder> {
     let path = "public/articles/template.html";
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace(&data.client, &mut body, &[&format!("articles/{}", info)]).await?;
+    template::search_replace(&data.client, &mut body, &[format!("articles/{}", info)]).await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))

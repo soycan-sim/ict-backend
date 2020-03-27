@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use futures::future;
 use futures::TryFutureExt;
 use pulldown_cmark as md;
@@ -5,7 +7,7 @@ use tokio::fs;
 use tokio_postgres as psql;
 
 use crate::path::PublicPath;
-use super::Result;
+use crate::error::{Error, Result};
 
 #[derive(Debug, Clone)]
 enum Pattern {
@@ -25,11 +27,11 @@ impl Pattern {
         input: &mut String,
         start: usize,
         end: usize,
-        args: &[&str],
+        args: &[String],
     ) -> Result<()> {
         let text = match self {
             Pattern::Path(path) => {
-                let path = PublicPath::from(path);
+                let path = PublicPath::try_from(path)?;
                 let text = fs::read_to_string(&path).await?;
                 if path.extension() == Some("md".as_ref()) {
                     let parser = md::Parser::new_ext(&text, md::Options::all());
@@ -41,8 +43,8 @@ impl Pattern {
                 }
             }
             Pattern::Positional(pos) => {
-                let path = args[pos - 1];
-                let path = PublicPath::from(path);
+                let path = &args[pos - 1];
+                let path = PublicPath::try_from(&**path)?;
                 let text = fs::read_to_string(&path).await?;
                 if path.extension() == Some("md".as_ref()) {
                     let parser = md::Parser::new_ext(&text, md::Options::all());
@@ -54,19 +56,17 @@ impl Pattern {
                 }
             }
             Pattern::ArticlePositional(pos) => {
-                let path = args[pos - 1];
+                let path = &args[pos - 1];
+                let args: &[&(dyn psql::types::ToSql + Sync)] = &[path];
                 let article = client
-                    .query_opt("select title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where path = $1", &[&path])
-                    .await?;
+                    .query_one("select title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where path = $1", args);
                 let contents = article
-                    .map(future::ok)
-                    .unwrap_or_else(|| future::err(()))
+                    .map_err(From::from)
                     .and_then(async move |article| {
-                        let path = PublicPath::from(path);
+                        let path = PublicPath::try_from(&**path)?;
                         if path.exists() {
                             let text = fs::read_to_string(&path)
-                                .await
-                                .map_err(|_| ())?;
+                                .await?;
                             if path.extension() == Some("md".as_ref()) {
                                 let parser = md::Parser::new_ext(&text, md::Options::all());
                                 let mut html = String::new();
@@ -76,7 +76,7 @@ impl Pattern {
                                 Ok((article, text))
                             }
                         } else {
-                            Err(()) // TODO: 404 error
+                            Err(Error::ResourceNotFound(path.to_string_lossy().to_string()))
                         }
                     });
                 contents.map_ok(|(article, contents)| {
@@ -87,8 +87,7 @@ impl Pattern {
                         article.get::<_, &str>("author"),
                         contents,
                     )
-                }).await
-                    .unwrap_or_else(|_| String::new())
+                }).await?
             }
             Pattern::PreviewLatest(no) => {
                 let rows = client
@@ -110,38 +109,40 @@ impl Pattern {
                     .query("select path, title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles order by cdate", &[])
                     .await?;
                 let article = rows.get(no - 1);
-                let contents = article
-                    .map(future::ok)
-                    .unwrap_or_else(|| future::err(()))
-                    .and_then(async move |article| {
-                        let path = article.get::<_, &str>("path");
-                        let path = PublicPath::from(path);
-                        if path.exists() {
-                            let text = fs::read_to_string(&path)
-                                .await
-                                .map_err(|_| ())?;
-                            if path.extension() == Some("md".as_ref()) {
-                                let parser = md::Parser::new_ext(&text, md::Options::all());
-                                let mut html = String::new();
-                                md::html::push_html(&mut html, parser);
-                                Ok((article, html))
+                let contents = article.map(|article| {
+                    future::ok(article)
+                        .and_then(async move |article| {
+                            let path = article.get::<_, &str>("path");
+                            let path = PublicPath::try_from(path)?;
+                            if path.exists() {
+                                let text = fs::read_to_string(&path)
+                                    .await?;
+                                if path.extension() == Some("md".as_ref()) {
+                                    let parser = md::Parser::new_ext(&text, md::Options::all());
+                                    let mut html = String::new();
+                                    md::html::push_html(&mut html, parser);
+                                    Ok((article, html))
+                                } else {
+                                    Ok((article, text))
+                                }
                             } else {
-                                Ok((article, text))
+                                Err(Error::ResourceNotFound(path.to_string_lossy().to_string()))
                             }
-                        } else {
-                            Err(())
-                        }
-                    });
-                contents.map_ok(|(article, contents)| {
-                    format!(
-                        "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
-                        article.get::<_, &str>("title"),
-                        article.get::<_, &str>("date"),
-                        article.get::<_, &str>("author"),
-                        contents,
-                    )
-                }).await
-                    .unwrap_or_else(|_| String::new())
+                        })
+                });
+                if let Some(contents) = contents {
+                    contents.map_ok(|(article, contents)| {
+                        format!(
+                            "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
+                            article.get::<_, &str>("title"),
+                            article.get::<_, &str>("date"),
+                            article.get::<_, &str>("author"),
+                            contents,
+                        )
+                    }).await?
+                } else {
+                    String::new()
+                }
             }
             Pattern::PreviewTitle(title) => {
                 let article = client
@@ -158,31 +159,29 @@ impl Pattern {
                 }).unwrap_or_else(String::new)
             }
             Pattern::ArticleTitle(title) => {
+                let args: &[&(dyn psql::types::ToSql + Sync)] = &[&title];
                 let article = client
-                    .query_opt("select title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where title = $1", &[&title])
-                    .await?;
+                    .query_one("select title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where title = $1", args);
                 let contents = article
-                    .map(future::ok)
-                    .unwrap_or_else(|| future::err(()))
+                    .map_err(From::from)
                     .and_then(async move |article| {
-                    let path = article.get::<_, &str>("path");
-                    let path = PublicPath::from(path);
-                    if path.exists() {
-                        let text = fs::read_to_string(&path)
-                            .await
-                            .map_err(|_| ())?;
-                        if path.extension() == Some("md".as_ref()) {
-                            let parser = md::Parser::new_ext(&text, md::Options::all());
-                            let mut html = String::new();
-                            md::html::push_html(&mut html, parser);
-                            Ok((article, html))
+                        let path = article.get::<_, &str>("path");
+                        let path = PublicPath::try_from(path)?;
+                        if path.exists() {
+                            let text = fs::read_to_string(&path)
+                                .await?;
+                            if path.extension() == Some("md".as_ref()) {
+                                let parser = md::Parser::new_ext(&text, md::Options::all());
+                                let mut html = String::new();
+                                md::html::push_html(&mut html, parser);
+                                Ok((article, html))
+                            } else {
+                                Ok((article, text))
+                            }
                         } else {
-                            Ok((article, text))
+                            Err(Error::ResourceNotFound(path.to_string_lossy().to_string()))
                         }
-                    } else {
-                        Err(())
-                    }
-                });
+                    });
                 contents.map_ok(|(article, contents)| {
                     format!(
                         "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
@@ -191,8 +190,7 @@ impl Pattern {
                         article.get::<_, &str>("author"),
                         contents,
                     )
-                }).await
-                    .unwrap_or_else(|_| String::new())
+                }).await?
             }
         };
         input.replace_range(start..(end + 3), &text);
@@ -200,7 +198,7 @@ impl Pattern {
     }
 }
 
-async fn replace_at(client: &psql::Client, input: &mut String, start: usize, args: &[&str]) -> Result<()> {
+async fn replace_at(client: &psql::Client, input: &mut String, start: usize, args: &[String]) -> Result<()> {
     if let Some(len) = &input[start..].find("}}}") {
         let end = start + len;
         let pattern = &input[(start + 3)..end];
@@ -227,7 +225,7 @@ async fn replace_at(client: &psql::Client, input: &mut String, start: usize, arg
     }
 }
 
-pub async fn search_replace(client: &psql::Client, input: &mut String, args: &[&str]) -> Result<()> {
+pub async fn search_replace(client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
     loop {
         match input.find("{{{") {
             Some(idx) => {
