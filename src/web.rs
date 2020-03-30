@@ -40,10 +40,10 @@ pub async fn javascript(_data: web::Data<ServerData>, info: web::Path<String>) -
         .body(script))
 }
 
-#[get("/frontend/{script}.wasm")]
+#[get("{script}.wasm")]
 pub async fn wasm(_data: web::Data<ServerData>, info: web::Path<String>) -> Result<impl Responder> {
     let path = format!("public/frontend/{}.wasm", info);
-    let script = fs::read_to_string(path).await?;
+    let script = fs::read(path).await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "application/wasm")
         .body(script))

@@ -126,6 +126,12 @@ code {
     display: block;
 }
 
+#editor-text-view {
+    padding: 8px 10px 8px 10px;
+    display: block;
+    width: 40%;
+}
+
 .ast {
     background-color: #171824;
     font-family: "Lucida Console", Monaco, monospace;
