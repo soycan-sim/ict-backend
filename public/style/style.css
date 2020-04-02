@@ -130,6 +130,13 @@ code {
     padding: 8px 10px 8px 10px;
     display: block;
     width: 40%;
+    float: right;
+    background-color: #f8f6f0;
+}
+
+#editor-text-field {
+    width: 50%;
+    height: 50vh;
 }
 
 .ast {
