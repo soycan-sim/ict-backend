@@ -14,6 +14,8 @@ pub enum Error {
     CreateDb,
     ResourceNotFound(String),
     IllegalResource(String),
+    Argon2(argon2::Error),
+    AuthenticationFailed,
 }
 
 impl Display for Error {
@@ -33,6 +35,8 @@ impl Display for Error {
             ),
             Error::ResourceNotFound(res) => write!(f, "resource not found: {:?}", res),
             Error::IllegalResource(res) => write!(f, "illegal resources: {:?}", res),
+            Error::Argon2(err) => write!(f, "an error occured while trying authenticate: {}", err),
+            Error::AuthenticationFailed => write!(f, "authentication failed"),
         }
     }
 }
@@ -52,6 +56,12 @@ impl From<IoError> for Error {
 impl From<ParseIntError> for Error {
     fn from(err: ParseIntError) -> Error {
         Error::Template(err)
+    }
+}
+
+impl From<argon2::Error> for Error {
+    fn from(err: argon2::Error) -> Error {
+        Error::Argon2(err)
     }
 }
 

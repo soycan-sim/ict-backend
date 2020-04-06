@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+    {{{/template/head.html}}}
+</head>
+<body>
+    {{{/template/header.html}}}
+
+    {{{/template/sidenav.html}}}
+
+    <main>
+
+    <form action="/auth/login.html" method="post">
+        <label id="username-text" for="username">Username:</label>
+        <input type="text" id="username" name="username"/></br>
+        <label id="password-text" for="password">Password:</label>
+        <input type="password" id="password" name="password"/></br>
+        <input type="submit" value="Submit"/>
+    </form>
+
+    {{{/template/footer.html}}}
+    </main>
+</body>
+</html>

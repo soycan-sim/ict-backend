@@ -4,9 +4,11 @@ use std::process;
 use clap::{Arg, App as Clapp, SubCommand, ArgMatches};
 use tokio_postgres::NoTls;
 use actix_web::{App, HttpServer};
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 
 use crate::error::{Error, Result};
 
+pub mod auth;
 pub mod error;
 pub mod template;
 pub mod path;
@@ -171,6 +173,14 @@ async fn main() -> Result<()> {
             let data = || web::ServerData::new("host=localhost port=5432 dbname=circus user=circus", NoTls);
             HttpServer::new(move || App::new()
                             .data_factory(data)
+                            .wrap(IdentityService::new(
+                                CookieIdentityPolicy::new(&[0; 64])
+                                    .name("auth-cookie")
+                                    .secure(false)))
+                            .service(auth::create)
+                            .service(auth::login)
+                            .service(auth::logout)
+                            .service(web::whoami)
                             .service(web::root)
                             .service(web::index)
                             .service(web::articles)

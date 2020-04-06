@@ -139,6 +139,16 @@ code {
     height: 50vh;
 }
 
+#username-text {
+    width: 100pt;
+    display: inline-block;
+}
+
+#password-text {
+    width: 100pt;
+    display: inline-block;
+}
+
 .ast {
     background-color: #171824;
     font-family: "Lucida Console", Monaco, monospace;
