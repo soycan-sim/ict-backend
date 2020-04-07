@@ -1,6 +1,7 @@
 #![feature(async_closure)]
 
 use std::process;
+
 use clap::{Arg, App as Clapp, SubCommand, ArgMatches};
 use tokio_postgres::NoTls;
 use actix_web::{App, HttpServer};
@@ -13,13 +14,16 @@ pub mod error;
 pub mod template;
 pub mod path;
 pub mod web;
+pub mod term;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 const ABOUT: &str = "circus-backend is an open source webservice framework";
 const AFTER_HELP: &str = "This program was made possible by https://Zirkus-Internationale.de.";
 
-const PSQL_CONFIG: &str = "host=localhost port=5432 dbname=circus user=circus";
+fn psql_config(password: &str) -> String {
+    format!("host=localhost port=5432 dbname=circus user=circus password={}", password)
+}
 
 fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
     let mut child = process::Command::new("useradd")
@@ -106,7 +110,11 @@ fn init_db<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
 }
 
 async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
-    let data = web::ServerData::new(PSQL_CONFIG, NoTls).await?;
+    let window = pancurses::initscr();
+    let password = term::prompt(&window, Some("Password: "), true);
+    pancurses::endwin();
+    let password = password.unwrap_or_else(String::new);
+    let data = web::ServerData::new(psql_config(&password), NoTls).await?;
     data.client.execute("create table if not exists articles
                          (
                              id serial primary key not null,
@@ -208,7 +216,13 @@ async fn main() -> Result<()> {
         ("add", Some(matches)) => git_add(matches),
         ("commit", Some(matches)) => git_commit(matches),
         ("start", Some(_matches)) => {
-            let data = || web::ServerData::new(PSQL_CONFIG, NoTls);
+            let data = || {
+                let window = pancurses::initscr();
+                let password = term::prompt(&window, Some("Password: "), true);
+                pancurses::endwin();
+                let password = password.unwrap_or_else(String::new);
+                web::ServerData::new(psql_config(&password), NoTls)
+            };
             HttpServer::new(move || App::new()
                             .data_factory(data)
                             .wrap(IdentityService::new(

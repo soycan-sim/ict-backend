@@ -14,8 +14,8 @@ pub struct ServerData<'a> {
 }
 
 impl ServerData<'static> {
-    pub async fn new(config: &str, tls: NoTls) -> Result<Self> {
-        let (client, conn) = psql::connect(config, tls).await?;
+    pub async fn new<S: Into<String>>(config: S, tls: NoTls) -> Result<Self> {
+        let (client, conn) = psql::connect(&config.into(), tls).await?;
         let handle = tokio::spawn(async move {
             if let Err(e) = conn.await {
                 eprintln!("connection error: {}", e);
