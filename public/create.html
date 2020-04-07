@@ -11,10 +11,18 @@
     <main>
 
     <form action="/auth/create.html" method="post">
-        <label id="username-text" for="username">Username:</label>
+        <label class="login-label" for="username">Username*:</label>
         <input type="text" id="username" name="username"/></br>
-        <label id="password-text" for="password">Password:</label>
+        <label class="login-label" for="firstname">First name:</label>
+        <input type="text" id="firstname" name="firstname"/></br>
+        <label class="login-label" for="lastname">Last name:</label>
+        <input type="text" id="lastname" name="lastname"/></br>
+        <label class="login-label" for="email">E-Mail*:</label>
+        <input type="text" id="email" name="email"/></br>
+        <label class="login-label" for="password">Password*:</label>
         <input type="password" id="password" name="password"/></br>
+        <label class="login-label" for="password2">Password (again)*:</label>
+        <input type="password" id="password2" name="password2"/></br>
         <input type="submit" value="Submit"/>
     </form>
 

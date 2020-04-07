@@ -139,13 +139,8 @@ code {
     height: 50vh;
 }
 
-#username-text {
-    width: 100pt;
-    display: inline-block;
-}
-
-#password-text {
-    width: 100pt;
+.login-label {
+    width: 120pt;
     display: inline-block;
 }
 
