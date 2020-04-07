@@ -19,6 +19,8 @@ const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 const ABOUT: &str = "circus-backend is an open source webservice framework";
 const AFTER_HELP: &str = "This program was made possible by https://Zirkus-Internationale.de.";
 
+const PSQL_CONFIG: &str = "host=localhost port=5432 dbname=circus user=circus";
+
 fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
     let mut child = process::Command::new("useradd")
         .arg("-m")
@@ -103,6 +105,39 @@ fn init_db<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
     }
 }
 
+async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
+    let data = web::ServerData::new(PSQL_CONFIG, NoTls).await?;
+    data.client.execute("create table if not exists articles
+                         (
+                             id serial primary key not null,
+                             path text not null,
+                             title text not null,
+                             cdate date not null,
+                             udate date,
+                             author text
+                         )", &[]).await?;
+    data.client.execute("create table if not exists users
+                         (
+                             id serial primary key not null,
+                             username text not null,
+                             pwhash text not null,
+                             email text not null,
+                             firstname text,
+                             lastname text
+                         )", &[]).await?;
+    data.client.execute("create table if not exists employees
+                         (
+                             id serial primary key not null,
+                             uid integer references users (id) not null
+                         )", &[]).await?;
+    data.client.execute("create table if not exists admins
+                         (
+                             id serial primary key not null,
+                             uid integer references users (id) not null
+                         )", &[]).await?;
+    Ok(())
+}
+
 fn git_add<'a, 'b>(matches: &'a ArgMatches<'b>) -> Result<()> {
     let mut child = process::Command::new("git")
         .arg("add")
@@ -139,6 +174,8 @@ async fn main() -> Result<()> {
         .subcommand(SubCommand::with_name("init-db")
             .about("initializes the circus database with the circus user (must \
                     be ran as `postgres`)"))
+        .subcommand(SubCommand::with_name("init-tables")
+            .about("initializes the circus database tables"))
         .subcommand(SubCommand::with_name("init-user")
             .about("initializes the circus user (must be ran as `root`)"))
         .subcommand(SubCommand::with_name("add")
@@ -166,11 +203,12 @@ async fn main() -> Result<()> {
 
     match matches.subcommand() {
         ("init-db", Some(matches)) => init_db(matches),
+        ("init-tables", Some(matches)) => init_tables(matches).await,
         ("init-user", Some(matches)) => init_user(matches),
         ("add", Some(matches)) => git_add(matches),
         ("commit", Some(matches)) => git_commit(matches),
         ("start", Some(_matches)) => {
-            let data = || web::ServerData::new("host=localhost port=5432 dbname=circus user=circus", NoTls);
+            let data = || web::ServerData::new(PSQL_CONFIG, NoTls);
             HttpServer::new(move || App::new()
                             .data_factory(data)
                             .wrap(IdentityService::new(
