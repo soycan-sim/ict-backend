@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+use actix_identity::Identity;
 use futures::future;
 use futures::TryFutureExt;
 use pulldown_cmark as md;
@@ -11,6 +12,8 @@ use crate::error::{Error, Result};
 
 #[derive(Debug, Clone)]
 enum Pattern {
+    Login,
+    Me(String),
     Path(String),
     Positional(usize),
     ArticlePositional(usize),
@@ -23,13 +26,41 @@ enum Pattern {
 impl Pattern {
     pub async fn replace_at(
         self,
+        identity: &Identity,
         client: &psql::Client,
         input: &mut String,
         start: usize,
         end: usize,
         args: &[String],
-    ) -> Result<()> {
+    ) -> Result<usize> {
         let text = match self {
+            Pattern::Login => {
+                match identity.identity() {
+                    Some(identity) => {
+                        format!("<span class=\"float-right\"><a href=\"/account/me.html\">Logged in as: {}</a></span> \
+                                 <span class=\"float-right\"><a href=\"/auth/logout.html\">Logout</a></span>", identity)
+                    }
+                    None => {
+                        "<span class=\"float-right\"><a href=\"/create.html\">Register</a></span> \
+                         <span class=\"float-right\"><a href=\"/login.html\">Login</a></span>".to_string()
+                    }
+                }
+            }
+            Pattern::Me(field) => {
+                if field == "pwhash" {
+                    "No passwords for you!".to_string()
+                } else {
+                    match identity.identity() {
+                        Some(me) => {
+                            match client.query_opt("select * from users where username = $1", &[&me]).await? {
+                                Some(row) => row.get::<&str, &str>(&field).to_string(),
+                                None => "".to_string(),
+                            }
+                        }
+                        None => "".to_string(),
+                    }
+                }
+            }
             Pattern::Path(path) => {
                 let path = PublicPath::try_from(path)?;
                 let text = fs::read_to_string(&path).await?;
@@ -194,15 +225,19 @@ impl Pattern {
             }
         };
         input.replace_range(start..(end + 3), &text);
-        Ok(())
+        Ok(text.len())
     }
 }
 
-async fn replace_at(client: &psql::Client, input: &mut String, start: usize, args: &[String]) -> Result<()> {
+async fn replace_at(identity: &Identity, client: &psql::Client, input: &mut String, start: usize, args: &[String]) -> Result<usize> {
     if let Some(len) = &input[start..].find("}}}") {
         let end = start + len;
         let pattern = &input[(start + 3)..end];
-        let pattern = if pattern.starts_with('/') {
+        let pattern = if pattern == "login" {
+            Pattern::Login
+        } else if pattern.starts_with("me.") {
+            Pattern::Me(pattern[3..].to_string())
+        } else if pattern.starts_with('/') {
             Pattern::Path(pattern[1..].to_string())
         } else if pattern.starts_with('%') {
             Pattern::Positional(pattern[1..].parse()?)
@@ -217,19 +252,32 @@ async fn replace_at(client: &psql::Client, input: &mut String, start: usize, arg
         } else if pattern.starts_with("article ") {
             Pattern::ArticleTitle(pattern["article ".len()..].to_string())
         } else {
-            return Ok(());
+            return Ok(0);
         };
-        pattern.replace_at(client, input, start, end, args).await
+        pattern.replace_at(identity, client, input, start, end, args).await
     } else {
-        Ok(())
+        Ok(0)
     }
 }
 
-pub async fn search_replace(client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
+pub async fn search_replace(identity: &Identity, client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
+    let mut i = 0;
+    loop {
+        match input[i..].find("{{{") {
+            Some(idx) => {
+                let len = replace_at(identity, client, input, idx, args).await?;
+                i = idx + len;
+            }
+            None => break Ok(()),
+        }
+    }
+}
+
+pub async fn search_replace_recursive(identity: &Identity, client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
     loop {
         match input.find("{{{") {
             Some(idx) => {
-                replace_at(client, input, idx, args).await?;
+                replace_at(identity, client, input, idx, args).await?;
             }
             None => break Ok(()),
         }

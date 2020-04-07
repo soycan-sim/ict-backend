@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+    {{{/template/head.html}}}
+</head>
+<body>
+    {{{/template/header.html}}}
+
+    {{{/template/sidenav.html}}}
+
+    <main>
+
+    <label class="label">Username:</label>
+    {{{me.username}}}
+    </br>
+    <label class="label">First Name:</label>
+    {{{me.firstname}}}
+    </br>
+    <label class="label">Last Name:</label>
+    {{{me.lastname}}}
+    </br>
+    <label class="label">E-Mail:</label>
+    {{{me.email}}}
+    </br>
+
+    <div class="update-account">
+    <label class="label">Update E-Mail</label></br>
+    <form action="/auth/update-email.html" method="post">
+        <label class="login-label" for="password">Password*:</label>
+        <input type="password" id="password" name="password"/></br>
+        <label class="login-label" for="email">New E-Mail*:</label>
+        <input type="text" id="email" name="email"/></br>
+        <input type="submit" value="Submit"/>
+    </form>
+    </div>
+
+    <div class="update-account">
+    <label class="label">Update password</label></br>
+    <form action="/auth/update-password.html" method="post">
+        <label class="login-label" for="old_password">Old password*:</label>
+        <input type="password" id="old_password" name="old_password"/></br>
+        <label class="login-label" for="new_password">New password*:</label>
+        <input type="password" id="new_password" name="new_password"/></br>
+        <label class="login-label" for="new_password2">New password (again)*:</label>
+        <input type="password" id="new_password2" name="new_password2"/></br>
+        <input type="submit" value="Submit"/>
+    </form>
+    </div>
+
+    {{{/template/footer.html}}}
+    </main>
+</body>
+</html>

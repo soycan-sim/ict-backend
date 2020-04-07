@@ -140,44 +140,20 @@ code {
 }
 
 .login-label {
+    width: 160pt;
+    display: inline-block;
+}
+
+.label {
     width: 120pt;
     display: inline-block;
 }
 
-.ast {
-    background-color: #171824;
-    font-family: "Lucida Console", Monaco, monospace;
+.float-right {
+    float: right;
 }
 
-.inline {
-    background-color: #171824;
-    font-family: "Lucida Console", Monaco, monospace;
-    padding: 2px 2px 2px 2px;
-    font-size: 16px;
-    display: inline-block;
-}
-
-.block {
-    background-color: #171824;
-    font-family: "Lucida Console", Monaco, monospace;
-}
-
-.amp-lineno {
-    color: #575864;
-}
-
-.amp-generic {
-    color: #f9e9d5;
-}
-
-.amp-keyword {
-    color: #b959d5;
-}
-
-.amp-string {
-    color: #59a965;
-}
-
-.amp-operator {
-    color: #6979ff;
+.update-account {
+    padding: 16px 20px 16px 20px;
+    display: block;
 }

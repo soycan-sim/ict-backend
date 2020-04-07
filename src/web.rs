@@ -53,10 +53,10 @@ pub async fn wasm<'a>(_identity: Identity, _data: web::Data<ServerData<'a>>, inf
 }
 
 #[get("/articles/{article}")]
-pub async fn articles<'a>(_identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn articles<'a>(identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
     let path = "public/articles/template.html";
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace(&data.client, &mut body, &[format!("articles/{}", info)]).await?;
+    template::search_replace_recursive(&identity, &data.client, &mut body, &[format!("articles/{}", info)]).await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))
@@ -74,20 +74,20 @@ pub async fn whoami<'a>(identity: Identity, _data: web::Data<ServerData<'a>>) ->
 }
 
 #[get("/{res}.html")]
-pub async fn index<'a>(_identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn index<'a>(identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
     let path = format!("public/{}.html", info);
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace(&data.client, &mut body, &[]).await?;
+    template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))
 }
 
 #[get("/")]
-pub async fn root<'a>(_identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn root<'a>(identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
     let path = "public/index.html";
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace(&data.client, &mut body, &[]).await?;
+    template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))

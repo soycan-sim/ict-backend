@@ -10,6 +10,7 @@ use arrayvec::ArrayString;
 
 use crate::error::{Error, Result};
 
+pub mod account;
 pub mod auth;
 pub mod error;
 pub mod template;
@@ -238,6 +239,9 @@ async fn main() -> Result<()> {
                             .service(auth::create)
                             .service(auth::login)
                             .service(auth::logout)
+                            .service(auth::change_email)
+                            .service(auth::change_password)
+                            .service(account::me)
                             .service(web::whoami)
                             .service(web::root)
                             .service(web::index)
