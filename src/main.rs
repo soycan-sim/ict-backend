@@ -21,8 +21,12 @@ const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 const ABOUT: &str = "circus-backend is an open source webservice framework";
 const AFTER_HELP: &str = "This program was made possible by https://Zirkus-Internationale.de.";
 
+fn psql_escape<S: AsRef<str>>(string: S) -> String {
+    string.as_ref().replace("\\", "\\\\")
+}
+
 fn psql_config(password: &str) -> String {
-    format!("host=localhost port=5432 dbname=circus user=circus password={}", password)
+    format!("host=localhost port=5432 dbname=circus user=circus password='{}'", psql_escape(password))
 }
 
 fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
