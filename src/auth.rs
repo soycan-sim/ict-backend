@@ -1,13 +1,15 @@
+use tokio::fs;
 use actix_web::{get, post, web, Responder, HttpResponse};
 use actix_identity::Identity;
 use tokio_postgres as psql;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use rand::prelude::*;
 
 use crate::error::{Result, Error};
 use crate::web::ServerData;
+use crate::template;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuthData {
     username: String,
     password: String,
@@ -22,6 +24,12 @@ pub async fn create<'a>(auth_data: web::Form<AuthData>, _identity: Identity, dat
     let salt = salt();
     let auth_data = auth_data.into_inner();
     let username = auth_data.username;
+    let existing = data.client.query_opt("select * from users where username = $1", &[&username]).await?;
+    if let Some(_existing) = existing {
+        let mut body = fs::read_to_string("private/exists.html").await?;
+        template::search_replace(&data.client, &mut body, &[format!("user {}", username)]).await?;
+        return Ok(HttpResponse::BadRequest().body(body));
+    }
     let pwhash = argon2::hash_encoded(auth_data.password.as_bytes(), &salt, &data.argon)?;
     data.client.execute("insert into users (username, pwhash) values ($1, $2)", &[&username, &pwhash]).await?;
     Ok(HttpResponse::SeeOther().header("Location", "/").finish())

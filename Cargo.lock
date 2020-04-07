@@ -322,6 +322,9 @@ name = "arrayvec"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "async-trait"
@@ -539,6 +542,7 @@ dependencies = [
  "actix-identity",
  "actix-rt",
  "actix-web",
+ "arrayvec",
  "clap",
  "futures",
  "futures-util",

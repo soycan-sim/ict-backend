@@ -26,3 +26,7 @@ pancurses = "0.16"
 [dependencies.actix-web]
 version = "2.0"
 features = ["secure-cookies", "rustls"]
+
+[dependencies.arrayvec]
+version = "0.5"
+features = ["std", "serde", "array-sizes-33-128", "array-sizes-129-255"]

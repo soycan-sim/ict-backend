@@ -6,6 +6,7 @@ use clap::{Arg, App as Clapp, SubCommand, ArgMatches};
 use tokio_postgres::NoTls;
 use actix_web::{App, HttpServer};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
+use arrayvec::ArrayString;
 
 use crate::error::{Error, Result};
 
@@ -220,13 +221,14 @@ async fn main() -> Result<()> {
         ("add", Some(matches)) => git_add(matches),
         ("commit", Some(matches)) => git_commit(matches),
         ("start", Some(_matches)) => {
-            let data = || {
-                let window = pancurses::initscr();
-                let password = term::prompt(&window, Some("Password: "), true);
-                pancurses::endwin();
-                let password = password.unwrap_or_else(String::new);
-                web::ServerData::new(psql_config(&password), NoTls)
-            };
+            let window = pancurses::initscr();
+            let password = term::prompt(&window, Some("Password: "), true);
+            pancurses::endwin();
+            let password = password.unwrap_or_else(String::new);
+            let password = ArrayString::<[_; 255]>::from(&password).unwrap_or_else(|err| {
+                panic!("The password is too long, length is {}, but maximum length is 255", err.element().len());
+            });
+            let data = move || web::ServerData::new(psql_config(&password), NoTls);
             HttpServer::new(move || App::new()
                             .data_factory(data)
                             .wrap(IdentityService::new(
