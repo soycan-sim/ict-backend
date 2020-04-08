@@ -16,8 +16,11 @@ pub enum Error {
     IllegalResource(String),
     Argon2(argon2::Error),
     AuthenticationFailed,
+    AuthorizationFailed,
     PasswordMismatch,
     InvalidCreateUser(String),
+    InvalidPattern(String),
+    AsyncRecursion,
 }
 
 impl Display for Error {
@@ -39,10 +42,13 @@ impl Display for Error {
             Error::IllegalResource(res) => write!(f, "illegal resources: {:?}", res),
             Error::Argon2(err) => write!(f, "an error occured while trying authenticate: {}", err),
             Error::AuthenticationFailed => write!(f, "authentication failed"),
+            Error::AuthorizationFailed => write!(f, "authorization failed"),
             Error::PasswordMismatch => write!(f, "passwords didn't match"),
             Error::InvalidCreateUser(desc) => {
                 write!(f, "invalid user creation parameter: {}", desc)
             }
+            Error::InvalidPattern(pat) => write!(f, "invalid pattern: {:?}", pat),
+            Error::AsyncRecursion => write!(f, "async recursion"),
         }
     }
 }
