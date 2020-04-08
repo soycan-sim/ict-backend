@@ -10,14 +10,14 @@
 
     <main>
 
-    <textarea id="editor-text-field">
-# Title
-
-## Subtitle
-
- - bullet
- - list
-    </textarea>
+    <form id="editor-form" action="/account/editor.html" method="post">
+        <textarea id="editor-text-field" name="article"/></textarea></br>
+        <label class="label" for="title">Title:</label>
+        <input type="text" id="title" name="title"/></br>
+        <label class="label">Author:</label>
+        {{{me.username}}}</br>
+        <input type="submit" value="Submit"/>
+    </form>
 
     <div id="editor-text-view">
     </div>

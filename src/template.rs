@@ -27,6 +27,30 @@ enum Pattern {
     Maybe(Box<Pattern>),
 }
 
+async fn author(client: &psql::Client, uid: i32) -> Result<Option<String>> {
+    let user = client.query_opt("select firstname, lastname, username from users where id = $1", &[&uid]).await?;
+    match user {
+        Some(user) => {
+            let firstname = user.get::<_, Option<&str>>("firstname");
+            let lastname = user.get::<_, Option<&str>>("lastname");
+            let username = user.get::<_, &str>("username");
+            match (firstname, lastname) {
+                (Some(first), Some(last)) => {
+                    Ok(Some(format!("{} \"{}\" {}", first, username, last)))
+                }
+                (Some(first), None) => {
+                    Ok(Some(format!("{} \"{}\"", first, username)))
+                }
+                (None, Some(last)) => {
+                    Ok(Some(format!("\"{}\" {}", username, last)))
+                }
+                _ => Ok(Some(username.to_string())),
+            }
+        }
+        None => Ok(None),
+    }
+}
+
 impl FromStr for Pattern {
     type Err = Error;
 
@@ -172,34 +196,36 @@ impl Pattern {
                             Err(Error::ResourceNotFound(path.to_string_lossy().to_string()))
                         }
                     });
-                contents.map_ok(|(article, contents)| {
-                    format!(
-                        "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
+                contents.and_then(async move |(article, contents)| {
+                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                    Ok(format!(
+                        "<article><h1>{}</h1>{}{}<br/>{}</article>",
                         article.get::<_, &str>("title"),
                         article.get::<_, &str>("date"),
-                        article.get::<_, &str>("author"),
+                        by_author,
                         contents,
-                    )
+                    ))
                 }).await
             }
             Pattern::PreviewLatest(no) => {
                 let rows = client
                     .query("select title, path, to_char(cdate, 'yyyy-mm-dd') as date, author from articles order by cdate", &[])
                     .await?;
-                let article = rows.get(no - 1).ok_or_else(|| Error::ResourceNotFound(format!("preview~{}", no)))?;
+                let article = rows.len().checked_sub(no).and_then(|no| rows.get(no)).ok_or_else(|| Error::ResourceNotFound(format!("preview~{}", no)))?;
+                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
-                    "<article><h2><a href=\"{}\">{}</a></h2>{} ~{}</article>",
+                    "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
                     article.get::<_, &str>("path"),
                     article.get::<_, &str>("title"),
                     article.get::<_, &str>("date"),
-                    article.get::<_, &str>("author"),
+                    by_author,
                 ))
             }
             Pattern::ArticleLatest(no) => {
                 let rows = client
                     .query("select path, title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles order by cdate", &[])
                     .await?;
-                let article = rows.get(no - 1);
+                let article = rows.len().checked_sub(no).and_then(|no| rows.get(no));
                 let contents = article.map(|article| {
                     future::ok(article)
                         .and_then(async move |article| {
@@ -222,14 +248,15 @@ impl Pattern {
                         })
                 });
                 if let Some(contents) = contents {
-                    contents.map_ok(|(article, contents)| {
-                        format!(
-                            "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
+                    contents.and_then(async move |(article, contents)| {
+                        let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                        Ok(format!(
+                            "<article><h1>{}</h1>{}{}<br/>{}</article>",
                             article.get::<_, &str>("title"),
                             article.get::<_, &str>("date"),
-                            article.get::<_, &str>("author"),
+                            by_author,
                             contents,
-                        )
+                        ))
                     }).await
                 } else {
                     Ok(String::new())
@@ -239,12 +266,13 @@ impl Pattern {
                 let article = client
                     .query_one("select title, path, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where title = $1", &[&title])
                     .await?;
+                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
-                    "<article><h2><a href=\"{}\">{}</a></h2>{} ~{}</article>",
+                    "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
                     article.get::<_, &str>("path"),
                     article.get::<_, &str>("title"),
                     article.get::<_, &str>("date"),
-                    article.get::<_, &str>("author"),
+                    by_author,
                 ))
             }
             Pattern::ArticleTitle(title) => {
@@ -271,14 +299,15 @@ impl Pattern {
                             Err(Error::ResourceNotFound(path.to_string_lossy().to_string()))
                         }
                     });
-                contents.map_ok(|(article, contents)| {
-                    format!(
-                        "<article><h2>{}</h2>{} ~{}<br/>{}</article>",
+                contents.and_then(async move |(article, contents)| {
+                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                    Ok(format!(
+                        "<article><h1>{}</h1>{}{}<br/>{}</article>",
                         article.get::<_, &str>("title"),
                         article.get::<_, &str>("date"),
-                        article.get::<_, &str>("author"),
+                        by_author,
                         contents,
-                    )
+                    ))
                 }).await
             }
             Pattern::Maybe(_) => {

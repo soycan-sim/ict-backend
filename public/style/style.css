@@ -126,6 +126,12 @@ code {
     display: block;
 }
 
+footer {
+    position: fixed;
+    display: block;
+    bottom: 0;
+}
+
 #editor-text-view {
     padding: 8px 10px 8px 10px;
     display: block;
@@ -134,8 +140,14 @@ code {
     background-color: #f8f6f0;
 }
 
+#editor-form {
+    width: 40%;
+    display: block;
+    float: left;
+}
+
 #editor-text-field {
-    width: 50%;
+    width: 100%;
     height: 50vh;
 }
 
