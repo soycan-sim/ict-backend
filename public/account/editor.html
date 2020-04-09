@@ -11,15 +11,15 @@
 
     <main>
 
-    <button onclick="make_strong()"><strong>Bold</strong></button>
-    <button onclick="make_emph()"><em>Emph</em></button>
-    <button onclick="make_under()"><u>Under</u></button>
-    <button onclick="make_strike()"><s>Strike</s></button>
+    <button class="fmt-button" onclick="make_strong()"><strong>Bold</strong></button>
+    <button class="fmt-button" onclick="make_emph()"><em>Emph</em></button>
+    <button class="fmt-button" onclick="make_under()"><u>Under</u></button>
+    <button class="fmt-button" onclick="make_strike()"><s>Strike</s></button>
     </br>
     <form id="editor-form" action="/account/editor.html" method="post">
-        <textarea id="editor-text-field" name="article"/></textarea></br>
+        <textarea id="editor-text-field" name="article"/>{{{maybe(%2)}}}</textarea></br>
         <label class="label" for="title">Title:</label>
-        <input type="text" id="title" name="title"/></br>
+        <input type="text" id="title" name="title"/>{{{maybe(%1)}}}</br>
         <label class="label">Author:</label>
         {{{me.username}}}</br>
         <input type="submit" value="Submit"/>

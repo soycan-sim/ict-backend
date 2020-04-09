@@ -160,7 +160,9 @@ impl Pattern {
                 }
             }
             Pattern::Positional(pos) => {
-                let path = &args[pos - 1];
+                let path = args
+                    .get(pos - 1)
+                    .ok_or_else(|| Error::ResourceNotFound(format!("%{}", pos)))?;
                 let path = PublicPath::try_from(&**path)?;
                 let text = fs::read_to_string(&path).await?;
                 if path.extension() == Some("md".as_ref()) {
@@ -173,7 +175,9 @@ impl Pattern {
                 }
             }
             Pattern::ArticlePositional(pos) => {
-                let path = &args[pos - 1];
+                let path = args
+                    .get(pos - 1)
+                    .ok_or_else(|| Error::ResourceNotFound(format!("%{}", pos)))?;
                 let args: &[&(dyn psql::types::ToSql + Sync)] = &[path];
                 let article = client
                     .query_one("select title, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where path = $1", args);
