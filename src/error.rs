@@ -1,5 +1,6 @@
 use actix_web::ResponseError;
 use ron::de::Error as RonError;
+use serde_json::Error as JsonError;
 use std::fmt::{self, Display};
 use std::io::Error as IoError;
 use std::num::ParseIntError;
@@ -8,6 +9,7 @@ use tokio_postgres::Error as DbError;
 #[derive(Debug)]
 pub enum Error {
     Ron(RonError),
+    Json(JsonError),
     Db(DbError),
     Io(IoError),
     Template(ParseIntError),
@@ -29,6 +31,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Ron(err) => Display::fmt(err, f),
+            Error::Json(err) => Display::fmt(err, f),
             Error::Db(err) => Display::fmt(err, f),
             Error::Io(err) => Display::fmt(err, f),
             Error::Template(err) => write!(f, "template error: {}", err),
@@ -83,6 +86,12 @@ impl From<argon2::Error> for Error {
 impl From<RonError> for Error {
     fn from(err: RonError) -> Error {
         Error::Ron(err)
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(err: JsonError) -> Error {
+        Error::Json(err)
     }
 }
 

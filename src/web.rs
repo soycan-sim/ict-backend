@@ -5,6 +5,7 @@ use actix_web::{get, http, web, HttpRequest, HttpResponse, Responder};
 use tokio::{fs, task::JoinHandle};
 use tokio_postgres::{self as psql, NoTls};
 use actix_identity::Identity;
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 
 use crate::error::Result;
@@ -42,6 +43,11 @@ impl ServerData<'static> {
             _handle: handle,
         })
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WordData {
+    which: String,
 }
 
 #[get("/style/{sheet}.css")]
@@ -113,7 +119,7 @@ pub async fn articles<'a>(
 }
 
 #[get("/api/whoami")]
-pub async fn whoami<'a>(
+pub async fn api_whoami<'a>(
     _req: HttpRequest,
     identity: Identity,
     _data: web::Data<ServerData<'a>>,
@@ -122,6 +128,41 @@ pub async fn whoami<'a>(
         "username": identity.identity().unwrap_or_else(String::new)
     });
     let body = body.to_string();
+    Ok(HttpResponse::Ok()
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(body))
+}
+
+#[get("/api/l10n")]
+pub async fn api_l10n<'a>(
+    req: HttpRequest,
+    _identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
+    let body = serde_json::to_string(&data.lang[&lang])?;
+    Ok(HttpResponse::Ok()
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(body))
+}
+
+#[get("/api/t9n")]
+pub async fn api_t9n<'a>(
+    word: web::Query<WordData>,
+    req: HttpRequest,
+    _identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
+    let body = json!({
+        "t9n": &data.lang[&lang][&word.which]
+    });
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(body))
