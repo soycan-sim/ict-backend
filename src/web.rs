@@ -1,15 +1,20 @@
+use std::collections::HashMap;
+
+use actix_http::HttpMessage;
+use actix_web::{get, http, web, HttpRequest, HttpResponse, Responder};
 use tokio::{fs, task::JoinHandle};
 use tokio_postgres::{self as psql, NoTls};
-use actix_web::{get, web, http, Responder, HttpResponse};
 use actix_identity::Identity;
 use serde_json::json;
 
 use crate::error::Result;
+use crate::i18n::Language;
 use crate::template;
 
 pub struct ServerData<'a> {
     pub(crate) client: psql::Client,
     pub(crate) argon: argon2::Config<'a>,
+    pub(crate) lang: HashMap<String, Language>,
     _handle: JoinHandle<()>,
 }
 
@@ -21,12 +26,31 @@ impl ServerData<'static> {
                 eprintln!("connection error: {}", e);
             }
         });
-        Ok(Self { client, argon: argon2::Config::default(), _handle: handle })
+        let mut langs = HashMap::new();
+        let l10n = client.query("select code, path from l10n", &[]).await?;
+        for row in l10n {
+            let key = row.get::<_, &str>("code").to_string();
+            let path = row.get::<_, &str>("path");
+            let text = fs::read_to_string(path).await?;
+            let lang: Language = ron::de::from_str(&text)?;
+            langs.insert(key, lang);
+        }
+        Ok(Self {
+            client,
+            argon: argon2::Config::default(),
+            lang: langs,
+            _handle: handle,
+        })
     }
 }
 
 #[get("/style/{sheet}.css")]
-pub async fn stylesheet<'a>(_identity: Identity, _data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn stylesheet<'a>(
+    _req: HttpRequest,
+    _identity: Identity,
+    _data: web::Data<ServerData<'a>>,
+    info: web::Path<String>,
+) -> Result<impl Responder> {
     let path = format!("public/style/{}.css", info);
     let sheet = fs::read_to_string(path).await?;
     Ok(HttpResponse::Ok()
@@ -35,7 +59,12 @@ pub async fn stylesheet<'a>(_identity: Identity, _data: web::Data<ServerData<'a>
 }
 
 #[get("/frontend/{script}.js")]
-pub async fn javascript<'a>(_identity: Identity, _data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn javascript<'a>(
+    _req: HttpRequest,
+    _identity: Identity,
+    _data: web::Data<ServerData<'a>>,
+    info: web::Path<String>,
+) -> Result<impl Responder> {
     let path = format!("public/frontend/{}.js", info);
     let script = fs::read_to_string(path).await?;
     Ok(HttpResponse::Ok()
@@ -44,7 +73,12 @@ pub async fn javascript<'a>(_identity: Identity, _data: web::Data<ServerData<'a>
 }
 
 #[get("/{script}.wasm")]
-pub async fn wasm<'a>(_identity: Identity, _data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn wasm<'a>(
+    _req: HttpRequest,
+    _identity: Identity,
+    _data: web::Data<ServerData<'a>>,
+    info: web::Path<String>,
+) -> Result<impl Responder> {
     let path = format!("public/frontend/{}.wasm", info);
     let script = fs::read(path).await?;
     Ok(HttpResponse::Ok()
@@ -53,17 +87,37 @@ pub async fn wasm<'a>(_identity: Identity, _data: web::Data<ServerData<'a>>, inf
 }
 
 #[get("/articles/{article}")]
-pub async fn articles<'a>(identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn articles<'a>(
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+    info: web::Path<String>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     let path = "public/articles/template.html";
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace_recursive(&identity, &data.client, &mut body, &[format!("articles/{}", info)]).await?;
+    template::search_replace_recursive(
+        &identity,
+        &data.client,
+        &data.lang[&lang],
+        &mut body,
+        &[format!("articles/{}", info)],
+    )
+    .await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))
 }
 
 #[get("/api/whoami")]
-pub async fn whoami<'a>(identity: Identity, _data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn whoami<'a>(
+    _req: HttpRequest,
+    identity: Identity,
+    _data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
     let body = json!({
         "username": identity.identity().unwrap_or_else(String::new)
     });
@@ -74,20 +128,39 @@ pub async fn whoami<'a>(identity: Identity, _data: web::Data<ServerData<'a>>) ->
 }
 
 #[get("/{res}.html")]
-pub async fn index<'a>(identity: Identity, data: web::Data<ServerData<'a>>, info: web::Path<String>) -> Result<impl Responder> {
+pub async fn index<'a>(
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+    info: web::Path<String>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     let path = format!("public/{}.html", info);
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
+    template::search_replace_recursive(&identity, &data.client, &data.lang[&lang], &mut body, &[])
+        .await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))
 }
 
 #[get("/")]
-pub async fn root<'a>(identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn root<'a>(
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     let path = "public/index.html";
     let mut body = fs::read_to_string(path).await?;
-    template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
+    template::search_replace_recursive(&identity, &data.client, &data.lang[&lang], &mut body, &[])
+        .await?;
     Ok(HttpResponse::Ok()
         .header(http::header::CONTENT_TYPE, "text/html")
         .body(body))

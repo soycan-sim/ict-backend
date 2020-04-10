@@ -2,10 +2,11 @@
 
 use std::process;
 
-use clap::{Arg, App as Clapp, SubCommand, ArgMatches};
+use clap::{App as Clapp, Arg, ArgMatches, SubCommand};
 use tokio_postgres::NoTls;
-use actix_web::{App, HttpServer};
+
 use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_web::{App, HttpServer};
 use arrayvec::ArrayString;
 
 use crate::error::{Error, Result};
@@ -13,10 +14,11 @@ use crate::error::{Error, Result};
 pub mod account;
 pub mod auth;
 pub mod error;
-pub mod template;
+pub mod i18n;
 pub mod path;
-pub mod web;
+pub mod template;
 pub mod term;
+pub mod web;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
@@ -28,7 +30,10 @@ fn psql_escape<S: AsRef<str>>(string: S) -> String {
 }
 
 fn psql_config(password: &str) -> String {
-    format!("host=localhost port=5432 dbname=circus user=circus password='{}'", psql_escape(password))
+    format!(
+        "host=localhost port=5432 dbname=circus user=circus password='{}'",
+        psql_escape(password)
+    )
 }
 
 fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
@@ -43,15 +48,13 @@ fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
         .spawn()?;
     let status = child.wait()?;
     if !status.success() {
-        return Err(Error::Useradd)
+        return Err(Error::Useradd);
     }
 
-    let mut child = process::Command::new("passwd")
-        .arg("circus")
-        .spawn()?;
+    let mut child = process::Command::new("passwd").arg("circus").spawn()?;
     let status = child.wait()?;
     if !status.success() {
-        return Err(Error::Useradd)
+        return Err(Error::Useradd);
     }
 
     let mut child = process::Command::new("sudo")
@@ -61,7 +64,7 @@ fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
         .spawn()?;
     let status = child.wait()?;
     if !status.success() {
-        return Err(Error::Useradd)
+        return Err(Error::Useradd);
     }
 
     let mut child = process::Command::new("sudo")
@@ -73,12 +76,10 @@ fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
         .spawn()?;
     let status = child.wait()?;
     if !status.success() {
-        return Err(Error::Useradd)
+        return Err(Error::Useradd);
     }
 
-    let mut child = process::Command::new("passwd")
-        .arg("circus")
-        .spawn()?;
+    let mut child = process::Command::new("passwd").arg("circus").spawn()?;
     let status = child.wait()?;
     if status.success() {
         Ok(())
@@ -121,7 +122,9 @@ async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
     pancurses::endwin();
     let password = password.unwrap_or_else(String::new);
     let data = web::ServerData::new(psql_config(&password), NoTls).await?;
-    data.client.execute("create table if not exists articles
+    data.client
+        .execute(
+            "create table if not exists articles
                          (
                              id serial primary key not null,
                              path text not null,
@@ -129,8 +132,13 @@ async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
                              cdate date not null,
                              udate date,
                              author text
-                         )", &[]).await?;
-    data.client.execute("create table if not exists users
+                         )",
+            &[],
+        )
+        .await?;
+    data.client
+        .execute(
+            "create table if not exists users
                          (
                              id serial primary key not null,
                              username text not null,
@@ -138,17 +146,30 @@ async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
                              email text not null,
                              firstname text,
                              lastname text
-                         )", &[]).await?;
-    data.client.execute("create table if not exists employees
+                         )",
+            &[],
+        )
+        .await?;
+    data.client
+        .execute(
+            "create table if not exists employees
                          (
                              id serial primary key not null,
                              uid integer references users (id) not null
-                         )", &[]).await?;
-    data.client.execute("create table if not exists admins
+                         )",
+            &[],
+        )
+        .await?;
+    data.client
+        .execute(
+            "create table if not exists admins
                          (
                              id serial primary key not null,
                              uid integer references users (id) not null
-                         )", &[]).await?;
+                         )",
+            &[],
+        )
+        .await?;
     Ok(())
 }
 
@@ -168,7 +189,12 @@ fn git_add<'a, 'b>(matches: &'a ArgMatches<'b>) -> Result<()> {
 fn git_commit<'a, 'b>(matches: &'a ArgMatches<'b>) -> Result<()> {
     let mut child = process::Command::new("git")
         .arg("commit")
-        .args(matches.value_of_lossy("message").as_ref().map(AsRef::as_ref))
+        .args(
+            matches
+                .value_of_lossy("message")
+                .as_ref()
+                .map(AsRef::as_ref),
+        )
         .spawn()?;
     let status = child.wait()?;
     if status.success() {
@@ -185,34 +211,51 @@ async fn main() -> Result<()> {
         .author(AUTHORS)
         .about(ABOUT)
         .after_help(AFTER_HELP)
-        .subcommand(SubCommand::with_name("init-db")
-            .about("initializes the circus database with the circus user (must \
-                    be ran as `postgres`)"))
-        .subcommand(SubCommand::with_name("init-tables")
-            .about("initializes the circus database tables"))
-        .subcommand(SubCommand::with_name("init-user")
-            .about("initializes the circus user (must be ran as `root`)"))
-        .subcommand(SubCommand::with_name("add")
-            .about("adds the files specified in the command line to the staging \
-                    area in the current working directory")
-            .arg(Arg::with_name("file")
-                .takes_value(true)
-                .required(true)
-                .multiple(true)
-                .allow_hyphen_values(true)
-                .value_name("FILE")))
-        .subcommand(SubCommand::with_name("commit")
-            .about("commits the files in the staging area in the current working \
-                    directory to /var/circus-www")
-            .arg(Arg::with_name("message")
-                .short("m")
-                .long("message")
-                .takes_value(true)
-                .allow_hyphen_values(true)
-                .value_name("MESSAGE")))
-        .subcommand(SubCommand::with_name("start")
-            .about("starts the circus webservice in the current directory (must \
-                    be ran as `circus`)"))
+        .subcommand(SubCommand::with_name("init-db").about(
+            "initializes the circus database with the circus user (must \
+                    be ran as `postgres`)",
+        ))
+        .subcommand(
+            SubCommand::with_name("init-tables").about("initializes the circus database tables"),
+        )
+        .subcommand(
+            SubCommand::with_name("init-user")
+                .about("initializes the circus user (must be ran as `root`)"),
+        )
+        .subcommand(
+            SubCommand::with_name("add")
+                .about(
+                    "adds the files specified in the command line to the staging \
+                    area in the current working directory",
+                )
+                .arg(
+                    Arg::with_name("file")
+                        .takes_value(true)
+                        .required(true)
+                        .multiple(true)
+                        .allow_hyphen_values(true)
+                        .value_name("FILE"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("commit")
+                .about(
+                    "commits the files in the staging area in the current working \
+                    directory to /var/circus-www",
+                )
+                .arg(
+                    Arg::with_name("message")
+                        .short("m")
+                        .long("message")
+                        .takes_value(true)
+                        .allow_hyphen_values(true)
+                        .value_name("MESSAGE"),
+                ),
+        )
+        .subcommand(SubCommand::with_name("start").about(
+            "starts the circus webservice in the current directory (must \
+                    be ran as `circus`)",
+        ))
         .get_matches();
 
     match matches.subcommand() {
@@ -227,37 +270,44 @@ async fn main() -> Result<()> {
             pancurses::endwin();
             let password = password.unwrap_or_else(String::new);
             let password = ArrayString::<[_; 255]>::from(&password).unwrap_or_else(|err| {
-                panic!("The password is too long, length is {}, but maximum length is 255", err.element().len());
+                panic!(
+                    "The password is too long, length is {}, but maximum length is 255",
+                    err.element().len()
+                );
             });
             let data = move || web::ServerData::new(psql_config(&password), NoTls);
-            HttpServer::new(move || App::new()
-                            .data_factory(data)
-                            .wrap(IdentityService::new(
-                                CookieIdentityPolicy::new(&[0; 64])
-                                    .name("auth-cookie")
-                                    .secure(false)))
-                            .service(auth::create)
-                            .service(auth::login)
-                            .service(auth::logout)
-                            .service(auth::change_email)
-                            .service(auth::change_password)
-                            .service(account::me)
-                            .service(account::editor)
-                            .service(account::draft)
-                            .service(account::new)
-                            .service(account::save)
-                            .service(account::wasm)
-                            .service(web::whoami)
-                            .service(web::root)
-                            .service(web::index)
-                            .service(web::articles)
-                            .service(web::stylesheet)
-                            .service(web::javascript)
-                            .service(web::wasm))
-                .bind("127.0.0.1:8080")?
-                .run()
-                .await
-                .map_err(From::from)
+            HttpServer::new(move || {
+                App::new()
+                    .data_factory(data)
+                    .wrap(IdentityService::new(
+                        CookieIdentityPolicy::new(&[0; 64])
+                            .name("auth-cookie")
+                            .secure(false),
+                    ))
+                    .service(auth::create)
+                    .service(auth::login)
+                    .service(auth::logout)
+                    .service(auth::change_email)
+                    .service(auth::change_password)
+                    .service(account::me)
+                    .service(account::editor)
+                    .service(account::draft)
+                    .service(account::new)
+                    .service(account::save)
+                    .service(account::wasm)
+                    .service(i18n::lang)
+                    .service(web::whoami)
+                    .service(web::root)
+                    .service(web::index)
+                    .service(web::articles)
+                    .service(web::stylesheet)
+                    .service(web::javascript)
+                    .service(web::wasm)
+            })
+            .bind("127.0.0.1:8080")?
+            .run()
+            .await
+            .map_err(From::from)
         }
         ("", _) => Err(Error::Cmdline("no command passed".to_string())),
         (x, _) => Err(Error::Cmdline(format!("unrecognized command: {:?}", x))),

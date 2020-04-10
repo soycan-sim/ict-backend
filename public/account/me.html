@@ -10,40 +10,40 @@
 
     <main>
 
-    <label class="label">Username:</label>
+    <label class="label">{{{l10n(account_username)}}}:</label>
     {{{me.username}}}
     </br>
-    <label class="label">First Name:</label>
+    <label class="label">{{{l10n(account_firstname)}}}:</label>
     {{{me.firstname}}}
     </br>
-    <label class="label">Last Name:</label>
+    <label class="label">{{{l10n(account_lastname)}}}:</label>
     {{{me.lastname}}}
     </br>
-    <label class="label">E-Mail:</label>
+    <label class="label">{{{l10n(account_email)}}}:</label>
     {{{me.email}}}
     </br>
 
     <div class="update-account">
-    <label class="label">Update E-Mail</label></br>
+    <label class="label">{{{l10n(account_update_email)}}}</label></br>
     <form action="/auth/update-email.html" method="post">
-        <label class="login-label" for="password">Password*:</label>
+        <label class="login-label" for="password">{{{l10n(account_password)}}}*:</label>
         <input type="password" id="password" name="password"/></br>
-        <label class="login-label" for="email">New E-Mail*:</label>
+        <label class="login-label" for="email">{{{l10n(account_new_email)}}}*:</label>
         <input type="text" id="email" name="email"/></br>
-        <input type="submit" value="Submit"/>
+        <input type="submit" value="{{{l10n(account_submit)}}}"/>
     </form>
     </div>
 
     <div class="update-account">
-    <label class="label">Update password</label></br>
+    <label class="label">{{{l10n(account_update_password)}}}</label></br>
     <form action="/auth/update-password.html" method="post">
-        <label class="login-label" for="old_password">Old password*:</label>
+        <label class="login-label" for="old_password">{{{l10n(account_old_password)}}}*:</label>
         <input type="password" id="old_password" name="old_password"/></br>
-        <label class="login-label" for="new_password">New password*:</label>
+        <label class="login-label" for="new_password">{{{l10n(account_new_password1)}}}*:</label>
         <input type="password" id="new_password" name="new_password"/></br>
-        <label class="login-label" for="new_password2">New password (again)*:</label>
+        <label class="login-label" for="new_password2">{{{l10n(account_new_password2)}}}*:</label>
         <input type="password" id="new_password2" name="new_password2"/></br>
-        <input type="submit" value="Submit"/>
+        <input type="submit" value="{{{l10n(account_submit)}}}"/>
     </form>
     </div>
 

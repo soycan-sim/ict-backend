@@ -1,13 +1,15 @@
+use actix_http::HttpMessage;
+use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
 use tokio::fs;
-use actix_web::{get, post, web, Responder, HttpResponse};
-use actix_identity::Identity;
-use tokio_postgres as psql;
-use serde::{Serialize, Deserialize};
-use rand::prelude::*;
 
-use crate::error::{Result, Error};
-use crate::web::ServerData;
+use actix_identity::Identity;
+use rand::prelude::*;
+use serde::{Deserialize, Serialize};
+use tokio_postgres as psql;
+
+use crate::error::{Error, Result};
 use crate::template;
+use crate::web::ServerData;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateEmailData {
@@ -43,28 +45,62 @@ pub fn salt() -> [u8; 32] {
 }
 
 #[post("/auth/update-email.html")]
-pub async fn change_email<'a>(auth_data: web::Form<UpdateEmailData>, identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn change_email<'a>(
+    auth_data: web::Form<UpdateEmailData>,
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     match identity.identity() {
         Some(username) => {
             let auth_data = auth_data.into_inner();
             let email = auth_data.email;
             if !email.contains('@') {
-                return Err(Error::InvalidCreateUser("e-mail is not an e-mail".to_string()));
+                return Err(Error::InvalidCreateUser(
+                    "e-mail is not an e-mail".to_string(),
+                ));
             }
             let _userdata = query(&username, &auth_data.password, &data).await?;
-            data.client.execute("update users set email = $1 where username = $2", &[&email, &username]).await?;
-            Ok(HttpResponse::SeeOther().header("Location", "/account/me.html").finish())
+            data.client
+                .execute(
+                    "update users set email = $1 where username = $2",
+                    &[&email, &username],
+                )
+                .await?;
+            Ok(HttpResponse::SeeOther()
+                .header("Location", "/account/me.html")
+                .finish())
         }
         None => {
             let mut body = fs::read_to_string("private/forbidden.html").await?;
-            template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
+            template::search_replace_recursive(
+                &identity,
+                &data.client,
+                &data.lang[&lang],
+                &mut body,
+                &[],
+            )
+            .await?;
             Ok(HttpResponse::Forbidden().body(body))
         }
     }
 }
 
 #[post("/auth/update-password.html")]
-pub async fn change_password<'a>(auth_data: web::Form<UpdatePasswordData>, identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn change_password<'a>(
+    auth_data: web::Form<UpdatePasswordData>,
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     match identity.identity() {
         Some(username) => {
             let auth_data = auth_data.into_inner();
@@ -76,20 +112,44 @@ pub async fn change_password<'a>(auth_data: web::Form<UpdatePasswordData>, ident
                 return Err(Error::PasswordMismatch);
             }
             let salt = salt();
-            let pwhash = argon2::hash_encoded(auth_data.new_password.as_bytes(), &salt, &data.argon)?;
-            data.client.execute("update users set pwhash = $1 where username = $2", &[&pwhash, &username]).await?;
-            Ok(HttpResponse::SeeOther().header("Location", "/account/me.html").finish())
+            let pwhash =
+                argon2::hash_encoded(auth_data.new_password.as_bytes(), &salt, &data.argon)?;
+            data.client
+                .execute(
+                    "update users set pwhash = $1 where username = $2",
+                    &[&pwhash, &username],
+                )
+                .await?;
+            Ok(HttpResponse::SeeOther()
+                .header("Location", "/account/me.html")
+                .finish())
         }
         None => {
             let mut body = fs::read_to_string("private/forbidden.html").await?;
-            template::search_replace_recursive(&identity, &data.client, &mut body, &[]).await?;
+            template::search_replace_recursive(
+                &identity,
+                &data.client,
+                &data.lang[&lang],
+                &mut body,
+                &[],
+            )
+            .await?;
             Ok(HttpResponse::Forbidden().body(body))
         }
     }
 }
 
 #[post("/auth/create.html")]
-pub async fn create<'a>(auth_data: web::Form<CreateData>, identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn create<'a>(
+    auth_data: web::Form<CreateData>,
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
     let auth_data = auth_data.into_inner();
     let firstname = if auth_data.firstname.is_empty() {
         None
@@ -109,14 +169,26 @@ pub async fn create<'a>(auth_data: web::Form<CreateData>, identity: Identity, da
     }
     let username = auth_data.username;
     let email = auth_data.email;
-    let existing = data.client.query_opt("select * from users where username = $1", &[&username]).await?;
+    let existing = data
+        .client
+        .query_opt("select * from users where username = $1", &[&username])
+        .await?;
     if let Some(_existing) = existing {
         let mut body = fs::read_to_string("private/exists.html").await?;
-        template::search_replace_recursive(&identity, &data.client, &mut body, &[format!("user {}", username)]).await?;
+        template::search_replace_recursive(
+            &identity,
+            &data.client,
+            &data.lang[&lang],
+            &mut body,
+            &[format!("user {}", username)],
+        )
+        .await?;
         return Ok(HttpResponse::BadRequest().body(body));
     }
     if !email.contains('@') {
-        return Err(Error::InvalidCreateUser("e-mail is not an e-mail".to_string()));
+        return Err(Error::InvalidCreateUser(
+            "e-mail is not an e-mail".to_string(),
+        ));
     }
     if auth_data.password != auth_data.password2 {
         return Err(Error::PasswordMismatch);
@@ -131,17 +203,32 @@ pub async fn create<'a>(auth_data: web::Form<CreateData>, identity: Identity, da
             data.client.execute("insert into users (firstname, username, email, pwhash) values ($1, $2, $3, $4)", &[&first, &username, &email, &pwhash]).await?;
         }
         (None, Some(last)) => {
-            data.client.execute("insert into users (lastname, username, email, pwhash) values ($1, $2, $3, $4)", &[&last, &username, &email, &pwhash]).await?;
+            data.client
+                .execute(
+                    "insert into users (lastname, username, email, pwhash) values ($1, $2, $3, $4)",
+                    &[&last, &username, &email, &pwhash],
+                )
+                .await?;
         }
         (None, None) => {
-            data.client.execute("insert into users (username, email, pwhash) values ($1, $2, $3)", &[&username, &email, &pwhash]).await?;
+            data.client
+                .execute(
+                    "insert into users (username, email, pwhash) values ($1, $2, $3)",
+                    &[&username, &email, &pwhash],
+                )
+                .await?;
         }
     }
     Ok(HttpResponse::SeeOther().header("Location", "/").finish())
 }
 
 #[post("/auth/login.html")]
-pub async fn login<'a>(auth_data: web::Form<AuthData>, identity: Identity, data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn login<'a>(
+    auth_data: web::Form<AuthData>,
+    _req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
     let auth_data = auth_data.into_inner();
     let _userdata = query(&auth_data.username, &auth_data.password, &data).await?;
     let username = auth_data.username;
@@ -150,13 +237,20 @@ pub async fn login<'a>(auth_data: web::Form<AuthData>, identity: Identity, data:
 }
 
 #[get("/auth/logout.html")]
-pub async fn logout<'a>(identity: Identity, _data: web::Data<ServerData<'a>>) -> Result<impl Responder> {
+pub async fn logout<'a>(
+    _req: HttpRequest,
+    identity: Identity,
+    _data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
     identity.forget();
     Ok(HttpResponse::SeeOther().header("Location", "/").finish())
 }
 
 async fn query<'a>(username: &str, password: &str, data: &ServerData<'a>) -> Result<psql::Row> {
-    let userdata = data.client.query_one("select * from users where username = $1", &[&username]).await?;
+    let userdata = data
+        .client
+        .query_one("select * from users where username = $1", &[&username])
+        .await?;
     let pwhash = userdata.get::<_, &str>("pwhash");
     let res = argon2::verify_encoded(pwhash, password.as_bytes())?;
     if res {

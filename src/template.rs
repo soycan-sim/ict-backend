@@ -8,8 +8,9 @@ use pulldown_cmark as md;
 use tokio::fs;
 use tokio_postgres as psql;
 
-use crate::path::PublicPath;
 use crate::error::{Error, Result};
+use crate::i18n::Language;
+use crate::path::PublicPath;
 
 #[derive(Debug, Clone)]
 enum Pattern {
@@ -19,6 +20,7 @@ enum Pattern {
     Me(String),
     Path(String),
     Positional(usize),
+    L10n(String),
     ArticlePositional(usize),
     PreviewLatest(usize),
     ArticleLatest(usize),
@@ -28,7 +30,12 @@ enum Pattern {
 }
 
 async fn author(client: &psql::Client, uid: i32) -> Result<Option<String>> {
-    let user = client.query_opt("select firstname, lastname, username from users where id = $1", &[&uid]).await?;
+    let user = client
+        .query_opt(
+            "select firstname, lastname, username from users where id = $1",
+            &[&uid],
+        )
+        .await?;
     match user {
         Some(user) => {
             let firstname = user.get::<_, Option<&str>>("firstname");
@@ -38,12 +45,8 @@ async fn author(client: &psql::Client, uid: i32) -> Result<Option<String>> {
                 (Some(first), Some(last)) => {
                     Ok(Some(format!("{} \"{}\" {}", first, username, last)))
                 }
-                (Some(first), None) => {
-                    Ok(Some(format!("{} \"{}\"", first, username)))
-                }
-                (None, Some(last)) => {
-                    Ok(Some(format!("\"{}\" {}", username, last)))
-                }
+                (Some(first), None) => Ok(Some(format!("{} \"{}\"", first, username))),
+                (None, Some(last)) => Ok(Some(format!("\"{}\" {}", username, last))),
                 _ => Ok(Some(username.to_string())),
             }
         }
@@ -67,16 +70,30 @@ impl FromStr for Pattern {
             Ok(Pattern::Path(pattern[1..].to_string()))
         } else if pattern.starts_with('%') {
             Ok(Pattern::Positional(pattern[1..].parse()?))
+        } else if pattern.starts_with("l10n(") {
+            let start = "l10n(".len();
+            let end = pattern.len() - 1;
+            if &pattern[end..] != ")" {
+                return Err(Error::InvalidPattern(pattern.to_string()));
+            }
+            let sub = &pattern[start..end];
+            Ok(Pattern::L10n(sub.to_string()))
         } else if pattern.starts_with("article%") {
-            Ok(Pattern::ArticlePositional(pattern["article%".len()..].parse()?))
+            Ok(Pattern::ArticlePositional(
+                pattern["article%".len()..].parse()?,
+            ))
         } else if pattern.starts_with("preview~") {
             Ok(Pattern::PreviewLatest(pattern["preview~".len()..].parse()?))
         } else if pattern.starts_with("article~") {
             Ok(Pattern::ArticleLatest(pattern["article~".len()..].parse()?))
         } else if pattern.starts_with("preview ") {
-            Ok(Pattern::PreviewTitle(pattern["preview ".len()..].to_string()))
+            Ok(Pattern::PreviewTitle(
+                pattern["preview ".len()..].to_string(),
+            ))
         } else if pattern.starts_with("article ") {
-            Ok(Pattern::ArticleTitle(pattern["article ".len()..].to_string()))
+            Ok(Pattern::ArticleTitle(
+                pattern["article ".len()..].to_string(),
+            ))
         } else if pattern.starts_with("maybe(") {
             let start = "maybe(".len();
             let end = pattern.len() - 1;
@@ -96,6 +113,7 @@ impl Pattern {
         self,
         identity: &Identity,
         client: &psql::Client,
+        lang: &Language,
         args: &[String],
     ) -> Result<String> {
         match self {
@@ -103,12 +121,12 @@ impl Pattern {
             Pattern::Login => {
                 match identity.identity() {
                     Some(identity) => {
-                        Ok(format!("<span class=\"float-right\"><a href=\"/auth/logout.html\">Logout</a></span> \
-                                    <span class=\"float-right\"><a href=\"/account/me.html\">Logged in as: {}</a></span>", identity))
+                        Ok(format!("<span class=\"float-right\"><a href=\"/auth/logout.html\">{{{{{{l10n(logout)}}}}}}</a></span> \
+                                    <span class=\"float-right\"><a href=\"/account/me.html\">{{{{{{l10n(logged_in_as)}}}}}}: {}</a></span>", identity))
                     }
                     None => {
-                        Ok("<span class=\"float-right\"><a href=\"/login.html\">Login</a></span> \
-                            <span class=\"float-right\"><a href=\"/create.html\">Register</a></span>".to_string())
+                        Ok("<span class=\"float-right\"><a href=\"/login.html\">{{{l10n(login)}}}</a></span> \
+                            <span class=\"float-right\"><a href=\"/create.html\">{{{l10n(register)}}}</a></span>".to_string())
                     }
                 }
             }
@@ -122,7 +140,7 @@ impl Pattern {
                             &[&identity]
                         ).await?;
                         if user.is_some() {
-                            Ok("<span class=\"float-right\"><a href=\"/account/editor.html\">New</a></span>".to_string())
+                            Ok("<span class=\"float-right\"><a href=\"/account/editor.html\">{{{l10n(new_article)}}}</a></span>".to_string())
                         } else {
                             Err(Error::AuthorizationFailed)
                         }
@@ -174,6 +192,9 @@ impl Pattern {
                     Ok(text)
                 }
             }
+            Pattern::L10n(key) => {
+                Ok(lang[&key].to_string())
+            }
             Pattern::ArticlePositional(pos) => {
                 let path = args
                     .get(pos - 1)
@@ -201,7 +222,7 @@ impl Pattern {
                         }
                     });
                 contents.and_then(async move |(article, contents)| {
-                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                     Ok(format!(
                         "<article><h1>{}</h1>{}{}<br/>{}</article>",
                         article.get::<_, &str>("title"),
@@ -216,7 +237,7 @@ impl Pattern {
                     .query("select title, path, to_char(cdate, 'yyyy-mm-dd') as date, author from articles order by cdate", &[])
                     .await?;
                 let article = rows.len().checked_sub(no).and_then(|no| rows.get(no)).ok_or_else(|| Error::ResourceNotFound(format!("preview~{}", no)))?;
-                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
                     "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
                     article.get::<_, &str>("path"),
@@ -253,7 +274,7 @@ impl Pattern {
                 });
                 if let Some(contents) = contents {
                     contents.and_then(async move |(article, contents)| {
-                        let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                        let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                         Ok(format!(
                             "<article><h1>{}</h1>{}{}<br/>{}</article>",
                             article.get::<_, &str>("title"),
@@ -270,7 +291,7 @@ impl Pattern {
                 let article = client
                     .query_one("select title, path, to_char(cdate, 'yyyy-mm-dd') as date, author from articles where title = $1", &[&title])
                     .await?;
-                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
                     "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
                     article.get::<_, &str>("path"),
@@ -304,7 +325,7 @@ impl Pattern {
                         }
                     });
                 contents.and_then(async move |(article, contents)| {
-                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" by {}", author)).unwrap_or_else(String::new);
+                    let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                     Ok(format!(
                         "<article><h1>{}</h1>{}{}<br/>{}</article>",
                         article.get::<_, &str>("title"),
@@ -324,13 +345,19 @@ impl Pattern {
         self,
         identity: &Identity,
         client: &psql::Client,
+        lang: &Language,
         args: &[String],
     ) -> Result<String> {
         match self {
-            Pattern::Maybe(opt) => {
-                Ok(opt.to_string_nonrecursive(identity, client, args).await.unwrap_or_else(|_| String::new()))
+            Pattern::Maybe(opt) => Ok(opt
+                .to_string_nonrecursive(identity, client, lang, args)
+                .await
+                .unwrap_or_else(|_| String::new())),
+            other => {
+                other
+                    .to_string_nonrecursive(identity, client, lang, args)
+                    .await
             }
-            other => other.to_string_nonrecursive(identity, client, args).await,
         }
     }
 
@@ -338,34 +365,50 @@ impl Pattern {
         self,
         identity: &Identity,
         client: &psql::Client,
+        lang: &Language,
         input: &mut String,
         start: usize,
         end: usize,
         args: &[String],
     ) -> Result<usize> {
-        let text = self.to_string(identity, client, args).await?;
+        let text = self.to_string(identity, client, lang, args).await?;
         input.replace_range(start..(end + 3), &text);
         Ok(text.len())
     }
 }
 
-async fn replace_at(identity: &Identity, client: &psql::Client, input: &mut String, start: usize, args: &[String]) -> Result<usize> {
+async fn replace_at(
+    identity: &Identity,
+    client: &psql::Client,
+    lang: &Language,
+    input: &mut String,
+    start: usize,
+    args: &[String],
+) -> Result<usize> {
     if let Some(len) = &input[start..].find("}}}") {
         let end = start + len;
         let pattern = &input[(start + 3)..end];
         let pattern = pattern.parse().unwrap_or(Pattern::Empty);
-        pattern.replace_at(identity, client, input, start, end, args).await
+        pattern
+            .replace_at(identity, client, lang, input, start, end, args)
+            .await
     } else {
         Ok(0)
     }
 }
 
-pub async fn search_replace(identity: &Identity, client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
+pub async fn search_replace(
+    identity: &Identity,
+    client: &psql::Client,
+    lang: &Language,
+    input: &mut String,
+    args: &[String],
+) -> Result<()> {
     let mut i = 0;
     loop {
         match input[i..].find("{{{") {
             Some(idx) => {
-                let len = replace_at(identity, client, input, idx, args).await?;
+                let len = replace_at(identity, client, lang, input, idx, args).await?;
                 i = idx + len;
             }
             None => break Ok(()),
@@ -373,11 +416,17 @@ pub async fn search_replace(identity: &Identity, client: &psql::Client, input: &
     }
 }
 
-pub async fn search_replace_recursive(identity: &Identity, client: &psql::Client, input: &mut String, args: &[String]) -> Result<()> {
+pub async fn search_replace_recursive(
+    identity: &Identity,
+    client: &psql::Client,
+    lang: &Language,
+    input: &mut String,
+    args: &[String],
+) -> Result<()> {
     loop {
         match input.find("{{{") {
             Some(idx) => {
-                replace_at(identity, client, input, idx, args).await?;
+                replace_at(identity, client, lang, input, idx, args).await?;
             }
             None => break Ok(()),
         }

@@ -11,18 +11,18 @@
 
     <main>
 
-    <button class="fmt-button" onclick="make_strong()"><strong>Bold</strong></button>
-    <button class="fmt-button" onclick="make_emph()"><em>Emph</em></button>
-    <button class="fmt-button" onclick="make_under()"><u>Under</u></button>
-    <button class="fmt-button" onclick="make_strike()"><s>Strike</s></button>
+    <button class="fmt-button" onclick="make_strong()"><strong>{{{l10n(editor_bold)}}}</strong></button>
+    <button class="fmt-button" onclick="make_emph()"><em>{{{l10n(editor_emph)}}}</em></button>
+    <button class="fmt-button" onclick="make_under()"><u>{{{l10n(editor_under)}}}</u></button>
+    <button class="fmt-button" onclick="make_strike()"><s>{{{l10n(editor_strike)}}}</s></button>
     </br>
     <form id="editor-form" action="/account/editor.html" method="post">
         <textarea id="editor-text-field" name="article"/>{{{maybe(%2)}}}</textarea></br>
-        <label class="label" for="title">Title:</label>
+        <label class="label" for="title">{{{l10n(editor_title)}}}:</label>
         <input type="text" id="title" name="title"/>{{{maybe(%1)}}}</br>
-        <label class="label">Author:</label>
+        <label class="label">{{{l10n(editor_author)}}}:</label>
         {{{me.username}}}</br>
-        <input type="submit" value="Submit"/>
+        <input type="submit" value="{{{l10n(editor_submit)}}}"/>
     </form>
 
     <div id="editor-text-view">

@@ -1,3 +1,3 @@
-# Impressum
+# {{{l10n(impressum_title)}}}
 
-Dies ist das Impressum des Foobar Zirkus.
+{{{l10n(impressum_content)}}}

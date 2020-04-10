@@ -1,3 +1,3 @@
-# Kontakt
+# {{{l10n(contact_title)}}}
 
-Wir sind in der Wegstraße 42, 12345 Berlin-Mitte.
+{{{l10n(contact_address)}}}

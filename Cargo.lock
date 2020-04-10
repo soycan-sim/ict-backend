@@ -539,6 +539,7 @@ dependencies = [
 name = "circus-backend"
 version = "0.1.0"
 dependencies = [
+ "actix-http",
  "actix-identity",
  "actix-rt",
  "actix-web",
@@ -551,6 +552,7 @@ dependencies = [
  "postgres-types",
  "pulldown-cmark",
  "rand",
+ "ron",
  "rust-argon2",
  "serde",
  "serde_json",
@@ -1611,6 +1613,17 @@ dependencies = [
  "untrusted",
  "web-sys",
  "winapi 0.3.8",
+]
+
+[[package]]
+name = "ron"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ece421e0c4129b90e4a35b6f625e472e96c552136f5093a2f4fa2bbb75a62d5"
+dependencies = [
+ "base64 0.10.1",
+ "bitflags",
+ "serde",
 ]
 
 [[package]]

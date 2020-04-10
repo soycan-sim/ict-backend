@@ -1,6 +1,3 @@
-# Foobar Circus
+# {{{l10n(index_title)}}}
 
-- we
-- have
-- a
-- **website**
+{{{l10n(index_content)}}}

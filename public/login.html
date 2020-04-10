@@ -11,11 +11,11 @@
     <main>
 
     <form action="/auth/login.html" method="post">
-        <label class="login-label" for="username">Username:</label>
+        <label class="login-label" for="username">{{{l10n(login_username)}}}:</label>
         <input type="text" id="username" name="username"/></br>
-        <label class="login-label" for="password">Password:</label>
+        <label class="login-label" for="password">{{{l10n(login_password)}}}:</label>
         <input type="password" id="password" name="password"/></br>
-        <input type="submit" value="Submit"/>
+        <input type="submit" value="{{{l10n(login_submit)}}}"/>
     </form>
 
     {{{/template/footer.html}}}
