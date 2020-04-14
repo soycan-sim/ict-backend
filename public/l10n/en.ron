@@ -51,5 +51,9 @@
         "impressum_content": "This is the Impressum.",
         "index_title": "CODE_Circus",
         "index_content": "CODE_Circus Software Solutions is an Indie Software Developer in Berlin-Mitte.",
+        "format_strong": "b",
+        "format_emph": "i",
+        "format_under": "u",
+        "format_strike": "s",
     },
 )

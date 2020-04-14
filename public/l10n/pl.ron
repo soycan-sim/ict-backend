@@ -51,5 +51,9 @@
         "impressum_content": "To jest Impressum.",
         "index_title": "CODE_Circus",
         "index_content": "CODE_Circus Software Solutions to niezależny software developer w Berlin w dzielnicy Mitte.",
+        "format_strong": "b",
+        "format_emph": "i",
+        "format_under": "u",
+        "format_strike": "s",
     },
 )
