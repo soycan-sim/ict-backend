@@ -6,6 +6,7 @@ use tokio::fs;
 
 use actix_identity::Identity;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::error::Result;
 use crate::template;
@@ -15,6 +16,11 @@ use crate::web::ServerData;
 pub struct ArticleData {
     title: String,
     article: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiDraftData {
+    id: i32,
 }
 
 fn pathify(string: &str) -> (String, String) {
@@ -74,7 +80,7 @@ pub async fn me<'a>(
 
 #[post("/account/draft.html")]
 pub async fn save<'a>(
-    auth_data: web::Form<ArticleData>,
+    draft_data: web::Json<ArticleData>,
     req: HttpRequest,
     identity: Identity,
     data: web::Data<ServerData<'a>>,
@@ -100,9 +106,9 @@ pub async fn save<'a>(
             )
             .await?;
         if user.is_some() {
-            let auth_data = auth_data.into_inner();
-            let title = auth_data.title;
-            let article = auth_data.article;
+            let draft_data = draft_data.into_inner();
+            let title = draft_data.title;
+            let article = draft_data.article;
             let mut private = draftify(&username, &title);
             private.push_str(".md");
             let existing = data
@@ -130,12 +136,29 @@ pub async fn save<'a>(
                 .expect("`draftify()` didn't return a proper path");
             fs::create_dir_all(directory).await?;
             fs::write(&private, article).await?;
-            data.client
-                .execute(
-                    "insert into drafts (path, title, author) values ($1, $2, $3)",
-                    &[&private, &title, &uid],
+            let existing = data
+                .client
+                .query_opt(
+                    "select id from drafts where path = $1",
+                    &[&private],
                 )
                 .await?;
+            if let Some(row) = existing {
+                let id = row.get::<_, i32>("id");
+                data.client
+                    .execute(
+                        "update drafts set title = $1 where id = $2",
+                        &[&title, &id],
+                    )
+                    .await?;
+            } else {
+                data.client
+                    .execute(
+                        "insert into drafts (path, title, author) values ($1, $2, $3)",
+                        &[&private, &title, &uid],
+                    )
+                    .await?;
+            }
             Ok(HttpResponse::Ok().finish())
         } else {
             let mut body = fs::read_to_string("private/forbidden.html").await?;
@@ -149,6 +172,58 @@ pub async fn save<'a>(
             .await?;
             Ok(HttpResponse::Forbidden().body(body))
         }
+    } else {
+        let mut body = fs::read_to_string("private/forbidden.html").await?;
+        template::search_replace_recursive(
+            &identity,
+            &data.client,
+            &data.lang[&lang],
+            &mut body,
+            &[],
+        )
+        .await?;
+        Ok(HttpResponse::Forbidden().body(body))
+    }
+}
+
+// TODO: authorization
+#[get("/api/draft")]
+pub async fn api_draft<'a>(
+    draft_data: web::Query<ApiDraftData>,
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
+    if let Some(username) = identity.identity() {
+        let uid = data
+            .client
+            .query_one(
+                "select users.id as uid from users where username = $1",
+                &[&username],
+            )
+            .await?;
+        let uid = uid.get::<_, i32>("uid");
+        let article = data
+            .client
+            .query_one(
+                "select path, title from drafts where id = $1 and author = $2",
+                &[&draft_data.id, &uid],
+                )
+            .await?;
+        let content = fs::read_to_string(article.get::<_, &str>("path")).await?;
+        let title = article.get::<_, &str>("title");
+        let body = json!({
+            "content": content,
+            "title": title
+        });
+        let body = serde_json::to_string(&body)?;
+        Ok(HttpResponse::Ok()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
     } else {
         let mut body = fs::read_to_string("private/forbidden.html").await?;
         template::search_replace_recursive(

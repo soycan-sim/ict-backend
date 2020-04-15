@@ -11,6 +11,7 @@
 
     <main>
 
+    <div id="editor">
     <button class="fmt-button" onclick="make_strong()"><strong>{{{l10n(editor_bold)}}}</strong></button>
     <button class="fmt-button" onclick="make_emph()"><em>{{{l10n(editor_emph)}}}</em></button>
     <button class="fmt-button" onclick="make_under()"><u>{{{l10n(editor_under)}}}</u></button>
@@ -25,7 +26,10 @@
         <input type="submit" value="{{{l10n(editor_submit)}}}"/>
     </form>
 
+    {{{drafts}}}
+
     <div id="editor-text-view">
+    </div>
     </div>
 
     {{{/template/footer.html}}}

@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::fmt::Write;
 use std::str::FromStr;
 
 use actix_identity::Identity;
@@ -17,6 +18,7 @@ enum Pattern {
     Empty,
     Login,
     Editor,
+    Drafts,
     Me(String),
     Path(String),
     Positional(usize),
@@ -64,6 +66,8 @@ impl FromStr for Pattern {
             Ok(Pattern::Login)
         } else if pattern == "editor" {
             Ok(Pattern::Editor)
+        } else if pattern == "drafts" {
+            Ok(Pattern::Drafts)
         } else if pattern.starts_with("me.") {
             Ok(Pattern::Me(pattern[3..].to_string()))
         } else if pattern.starts_with('/') {
@@ -143,6 +147,35 @@ impl Pattern {
                             Ok("<span class=\"float-right\"><a href=\"/account/editor.html\">{{{l10n(new_article)}}}</a></span>".to_string())
                         } else {
                             Err(Error::AuthorizationFailed)
+                        }
+                    }
+                    None => {
+                        Err(Error::AuthorizationFailed)
+                    }
+                }
+            }
+            Pattern::Drafts => {
+                match identity.identity() {
+                    Some(identity) => {
+                        let drafts = client.query(
+                            "select id, path, title from drafts where drafts.author = \
+                             (select users.id as author from users where username = $1)",
+                            &[&identity]
+                        ).await?;
+                        if drafts.len() > 0 {
+                            let mut select = format!("<select oninput=\"load_draft()\" id=\"draft-select\" name=\"draft-select\" size=\"{}\">\n", drafts.len().min(5).max(2));
+                            for draft in drafts {
+                                let value = draft.get::<_, i32>("id");
+                                let mut title = draft.get::<_, Option<&str>>("title").unwrap_or("&lt;untitled&gt;");
+                                if title.is_empty() {
+                                    title = "&lt;untitled&gt;";
+                                }
+                                write!(select, "<option value=\"{}\">{}</option>\n", value, title).expect("couldn't write to string");
+                            }
+                            write!(select, "</select>\n").expect("couldn't write to string");
+                            Ok(select)
+                        } else {
+                            Ok(String::new())
                         }
                     }
                     None => {

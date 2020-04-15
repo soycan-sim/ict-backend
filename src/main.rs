@@ -294,6 +294,7 @@ async fn main() -> Result<()> {
                     .service(account::draft)
                     .service(account::new)
                     .service(account::save)
+                    .service(account::api_draft)
                     .service(account::wasm)
                     .service(i18n::lang)
                     .service(web::api_whoami)

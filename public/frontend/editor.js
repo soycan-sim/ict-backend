@@ -60,3 +60,29 @@ function make_under() {
 function make_strike() {
     make_formatted('~~', '~~');
 }
+
+function load_draft() {
+    let elem = document.getElementById('draft-select');
+
+    if (elem.selectedOptions.length == 0) {
+        return;
+    }
+
+    let id = elem.selectedOptions[0].value;
+    let xhr = new XMLHttpRequest();
+    xhr.open("GET", `/api/draft?id=${id}`, true);
+    xhr.addEventListener('load', (pogress) => {
+        let obj = JSON.parse(pogress.target.responseText);
+        let title = obj['title'];
+        let content = obj['content'];
+
+        document.getElementById('editor-text-field').value = content;
+        document.getElementById('title').value = title;
+
+        let elem = document.getElementById('editor-text-field');
+
+        let ev = new Event('input');
+        elem.dispatchEvent(ev);
+    })
+    xhr.send();
+}
