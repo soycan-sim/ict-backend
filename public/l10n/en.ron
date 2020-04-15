@@ -23,6 +23,7 @@
         "editor_title": "Title",
         "editor_author": "Author",
         "editor_submit": "Publish",
+        "editor_delete": "Delete",
         "account_username": "User account",
         "account_firstname": "First name",
         "account_lastname": "Last name",

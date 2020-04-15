@@ -19,6 +19,13 @@ pub struct ArticleData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct SaveDeleteData {
+    title: String,
+    article: String,
+    delete: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ApiDraftData {
     id: i32,
 }
@@ -80,7 +87,7 @@ pub async fn me<'a>(
 
 #[post("/account/draft.html")]
 pub async fn save<'a>(
-    draft_data: web::Json<ArticleData>,
+    draft_data: web::Json<SaveDeleteData>,
     req: HttpRequest,
     identity: Identity,
     data: web::Data<ServerData<'a>>,
@@ -109,55 +116,67 @@ pub async fn save<'a>(
             let draft_data = draft_data.into_inner();
             let title = draft_data.title;
             let article = draft_data.article;
-            let mut private = draftify(&username, &title);
-            private.push_str(".md");
-            let existing = data
-                .client
-                .query(
-                    "select * from drafts where path = $2 and title != $1",
-                    &[&title, &private],
-                )
-                .await?;
-            if !existing.is_empty() {
-                let mut body = fs::read_to_string("private/exists.html").await?;
-                template::search_replace_recursive(
-                    &identity,
-                    &data.client,
-                    &data.lang[&lang],
-                    &mut body,
-                    &[format!("article {}", title)],
-                )
-                .await?;
-                return Ok(HttpResponse::BadRequest().body(body));
-            }
-            let path: &Path = private.as_ref();
-            let directory = path
-                .parent()
-                .expect("`draftify()` didn't return a proper path");
-            fs::create_dir_all(directory).await?;
-            fs::write(&private, article).await?;
-            let existing = data
-                .client
-                .query_opt(
-                    "select id from drafts where path = $1",
-                    &[&private],
-                )
-                .await?;
-            if let Some(row) = existing {
-                let id = row.get::<_, i32>("id");
-                data.client
+            if draft_data.delete {
+                let mut private = draftify(&username, &title);
+                private.push_str(".md");
+                data
+                    .client
                     .execute(
-                        "update drafts set title = $1 where id = $2",
-                        &[&title, &id],
+                        "delete from drafts where path = $2 and title = $1 and author = $3",
+                        &[&title, &private, &uid],
                     )
                     .await?;
             } else {
-                data.client
-                    .execute(
-                        "insert into drafts (path, title, author) values ($1, $2, $3)",
-                        &[&private, &title, &uid],
+                let mut private = draftify(&username, &title);
+                private.push_str(".md");
+                let existing = data
+                    .client
+                    .query(
+                        "select * from drafts where path = $2 and title != $1 and author = $3",
+                        &[&title, &private, &uid],
                     )
                     .await?;
+                if !existing.is_empty() {
+                    let mut body = fs::read_to_string("private/exists.html").await?;
+                    template::search_replace_recursive(
+                        &identity,
+                        &data.client,
+                        &data.lang[&lang],
+                        &mut body,
+                        &[format!("article {}", title)],
+                    )
+                    .await?;
+                    return Ok(HttpResponse::BadRequest().body(body));
+                }
+                let path: &Path = private.as_ref();
+                let directory = path
+                    .parent()
+                    .expect("`draftify()` didn't return a proper path");
+                fs::create_dir_all(directory).await?;
+                fs::write(&private, article).await?;
+                let existing = data
+                    .client
+                    .query_opt(
+                        "select id from drafts where path = $1",
+                        &[&private],
+                    )
+                    .await?;
+                if let Some(row) = existing {
+                    let id = row.get::<_, i32>("id");
+                    data.client
+                        .execute(
+                            "update drafts set title = $1 where id = $2",
+                            &[&title, &id],
+                        )
+                        .await?;
+                } else {
+                    data.client
+                        .execute(
+                            "insert into drafts (path, title, author) values ($1, $2, $3)",
+                            &[&private, &title, &uid],
+                        )
+                        .await?;
+                }
             }
             Ok(HttpResponse::Ok().finish())
         } else {
@@ -293,6 +312,17 @@ pub async fn new<'a>(
             }
             fs::write(&private, article).await?;
             data.client.execute("insert into articles (path, title, cdate, author) values ($1, $2, current_date, $3)", &[&public, &title, &uid]).await?;
+
+            let mut draft_path = draftify(&username, &title);
+            draft_path.push_str(".md");
+            data
+                .client
+                .execute(
+                    "delete from drafts where title = $1 and path = $2 and author = $3",
+                    &[&title, &draft_path, &uid],
+                )
+                .await?;
+
             Ok(HttpResponse::SeeOther()
                 .header("Location", format!("/{}", public))
                 .finish())

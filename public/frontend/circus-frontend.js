@@ -615,6 +615,9 @@ Module.STDWEB_PRIVATE.acquire_tmp = function( dummy ) {
             "__cargo_web_snippet_80d6d56760c65e49b7be8b6b01c1ea861b046bf0": function($0) {
                 Module.STDWEB_PRIVATE.decrement_refcount( $0 );
             },
+            "__cargo_web_snippet_84339b1bf72a580059a6e0ff9499e53759aef5b9": function($0) {
+                var o = Module.STDWEB_PRIVATE.acquire_js_reference( $0 );return (o instanceof MouseEvent && o.type === "click");
+            },
             "__cargo_web_snippet_85401a1163e22683351dc93917fd37cbbebda5a3": function() {
                 make_strong();
             },
