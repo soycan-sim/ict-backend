@@ -18,7 +18,9 @@ enum Pattern {
     Empty,
     Login,
     Editor,
+    Admin,
     Drafts,
+    AdminPanel,
     Me(String),
     Path(String),
     Positional(usize),
@@ -66,8 +68,12 @@ impl FromStr for Pattern {
             Ok(Pattern::Login)
         } else if pattern == "editor" {
             Ok(Pattern::Editor)
+        } else if pattern == "admin" {
+            Ok(Pattern::Admin)
         } else if pattern == "drafts" {
             Ok(Pattern::Drafts)
+        } else if pattern == "admin-panel" {
+            Ok(Pattern::AdminPanel)
         } else if pattern.starts_with("me.") {
             Ok(Pattern::Me(pattern[3..].to_string()))
         } else if pattern.starts_with('/') {
@@ -154,6 +160,26 @@ impl Pattern {
                     }
                 }
             }
+            Pattern::Admin => {
+                match identity.identity() {
+                    Some(identity) => {
+                        // only employees are allowed to make new articles
+                        let user = client.query_opt(
+                            "select admins.id from admins where admins.uid = \
+                             (select users.id as uid from users where username = $1)",
+                            &[&identity]
+                        ).await?;
+                        if user.is_some() {
+                            Ok("<span class=\"float-right\"><a href=\"/account/admin.html\">{{{l10n(admin_panel)}}}</a></span>".to_string())
+                        } else {
+                            Err(Error::AuthorizationFailed)
+                        }
+                    }
+                    None => {
+                        Err(Error::AuthorizationFailed)
+                    }
+                }
+            }
             Pattern::Drafts => {
                 match identity.identity() {
                     Some(identity) => {
@@ -177,6 +203,70 @@ impl Pattern {
                         } else {
                             Ok(String::new())
                         }
+                    }
+                    None => {
+                        Err(Error::AuthorizationFailed)
+                    }
+                }
+            }
+            Pattern::AdminPanel => {
+                match identity.identity() {
+                    Some(identity) => {
+                        let admin = client.query_opt(
+                            "select id from admins where uid = \
+                             (select id as uid from users where username = $1)",
+                            &[&identity]
+                        ).await?;
+                        if admin.is_none() {
+                            return Err(Error::AuthorizationFailed);
+                        }
+
+                        let users = client.query(
+                            "select id, username, firstname, lastname, email from users",
+                            &[]
+                        ).await?;
+                        let mut select = format!("<table>\n");
+                        write!(select, "<tr>\n").expect("couldn't write to string");
+                        write!(select, "<th>UID</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_username)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_firstname)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_lastname)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_email)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_isemployee)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_isadmin)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "</tr>\n").expect("couldn't write to string");
+                        for user in users {
+                            let id = user.get::<_, i32>("id");
+                            let isadmin = client
+                                .query_opt(
+                                    "select id from admins where uid = \
+                                    (select id as uid from users where id = $1)",
+                                    &[&id]
+                                )
+                                .await?
+                                .is_some();
+                            let isemployee = client
+                                .query_opt(
+                                    "select id from employees where uid = \
+                                    (select id as uid from users where id = $1)",
+                                    &[&id]
+                                )
+                                .await?
+                                .is_some();
+                            let isadmin = if isadmin { "checked=\"checked\"" } else { "" };
+                            let isemployee = if isemployee { "checked=\"checked\"" } else { "" };
+                            write!(select, "<tr>\n").expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", id).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", user.get::<_, &str>("username")).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", user.get::<_, Option<&str>>("firstname").unwrap_or("")).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", user.get::<_, Option<&str>>("lastname").unwrap_or("")).expect("couldn't write to string");
+                            write!(select, "<td><a href=\"mailto:{0}\">{0}</a></td>\n", user.get::<_, &str>("email")).expect("couldn't write to string");
+                            write!(select, "<td><form><input type=\"checkbox\" {} oninput=\"make_employee(this, {})\"/></form></td>\n", isemployee, id).expect("couldn't write to string");
+                            write!(select, "<td><form><input type=\"checkbox\" {} oninput=\"make_admin(this, {})\"/></form></td>\n", isadmin, id).expect("couldn't write to string");
+                            write!(select, "</tr>\n").expect("couldn't write to string");
+                        }
+                        write!(select, "</table>\n").expect("couldn't write to string");
+                        Ok(select)
                     }
                     None => {
                         Err(Error::AuthorizationFailed)

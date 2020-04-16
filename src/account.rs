@@ -30,6 +30,18 @@ pub struct ApiDraftData {
     id: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetAdminData {
+    value: bool,
+    uid: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetEmployeeData {
+    value: bool,
+    uid: i32,
+}
+
 fn pathify(string: &str) -> (String, String) {
     let public_path = format!(
         "articles/{}",
@@ -60,6 +72,61 @@ pub async fn me<'a>(
         .unwrap_or_else(|| "de".to_string());
     if identity.identity().is_some() {
         let mut body = fs::read_to_string("public/account/me.html").await?;
+        template::search_replace_recursive(
+            &identity,
+            &data.client,
+            &data.lang[&lang],
+            &mut body,
+            &[],
+        )
+        .await?;
+        Ok(HttpResponse::Ok()
+            .header(http::header::CONTENT_TYPE, "text/html")
+            .body(body))
+    } else {
+        let mut body = fs::read_to_string("private/forbidden.html").await?;
+        template::search_replace_recursive(
+            &identity,
+            &data.client,
+            &data.lang[&lang],
+            &mut body,
+            &[],
+        )
+        .await?;
+        Ok(HttpResponse::Forbidden().body(body))
+    }
+}
+
+#[get("/account/admin.html")]
+pub async fn admin_panel<'a>(
+    req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    let lang = req
+        .cookie("lang")
+        .map(|cookie| cookie.value().to_string())
+        .unwrap_or_else(|| "de".to_string());
+    if let Some(username) = identity.identity() {
+        let admin = data.client.query_opt(
+            "select id from admins where uid = \
+             (select id as uid from users where username = $1)",
+            &[&username]
+        ).await?;
+        if admin.is_none() {
+            let mut body = fs::read_to_string("private/forbidden.html").await?;
+            template::search_replace_recursive(
+                &identity,
+                &data.client,
+                &data.lang[&lang],
+                &mut body,
+                &[],
+            )
+            .await?;
+            return Ok(HttpResponse::Forbidden().body(body));
+        }
+
+        let mut body = fs::read_to_string("public/account/admin.html").await?;
         template::search_replace_recursive(
             &identity,
             &data.client,
@@ -205,7 +272,152 @@ pub async fn save<'a>(
     }
 }
 
-// TODO: authorization
+#[post("/api/setadmin")]
+pub async fn api_setadmin<'a>(
+    admin_data: web::Form<SetAdminData>,
+    _req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    if let Some(username) = identity.identity() {
+        let admin = data.client.query_opt(
+            "select id from admins where uid = \
+             (select id as uid from users where username = $1)",
+            &[&username]
+        ).await?;
+        if admin.is_none() {
+            let body = json!({
+                "success": false,
+                "reason": "forbidden"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::Forbidden()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        }
+
+        if admin_data.value {
+            let existing = data
+                .client
+                .query_opt("select id from admins where uid = $1", &[&admin_data.uid])
+                .await?;
+            if existing.is_some() {
+                let body = json!({
+                    "success": false,
+                    "reason": "bad request"
+                });
+                let body = serde_json::to_string(&body).unwrap();
+
+                return Ok(HttpResponse::BadRequest()
+                   .header(http::header::CONTENT_TYPE, "application/json")
+                   .body(body));
+            }
+            data
+                .client
+                .execute("insert into admins (uid) values ($1)", &[&admin_data.uid])
+                .await?;
+        } else {
+            data
+                .client
+                .execute("delete from admins where uid = $1", &[&admin_data.uid])
+                .await?;
+        }
+
+        let body = json!({
+            "success": true
+        });
+        let body = serde_json::to_string(&body).unwrap();
+
+        Ok(HttpResponse::Ok()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
+    } else {
+        let body = json!({
+            "success": false,
+            "reason": "forbidden"
+        });
+        let body = serde_json::to_string(&body).unwrap();
+
+        Ok(HttpResponse::Forbidden()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
+    }
+}
+
+#[post("/api/setemployee")]
+pub async fn api_setemployee<'a>(
+    employee_data: web::Form<SetEmployeeData>,
+    _req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    if let Some(username) = identity.identity() {
+        let admin = data.client.query_opt(
+            "select id from admins where uid = \
+             (select id as uid from users where username = $1)",
+            &[&username]
+        ).await?;
+        if admin.is_none() {
+            let body = json!({
+                "success": false,
+                "reason": "forbidden"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::Forbidden()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        }
+
+        if employee_data.value {
+            let existing = data
+                .client
+                .query_opt("select id from employees where uid = $1", &[&employee_data.uid])
+                .await?;
+            if existing.is_some() {
+                let body = json!({
+                    "success": false,
+                    "reason": "bad request"
+                });
+                let body = serde_json::to_string(&body).unwrap();
+
+                return Ok(HttpResponse::BadRequest()
+                   .header(http::header::CONTENT_TYPE, "application/json")
+                   .body(body));
+            }
+            data
+                .client
+                .execute("insert into employees (uid) values ($1)", &[&employee_data.uid])
+                .await?;
+        } else {
+            data
+                .client
+                .execute("delete from employees where uid = $1", &[&employee_data.uid])
+                .await?;
+        }
+
+        let body = json!({
+            "success": true
+        });
+        let body = serde_json::to_string(&body).unwrap();
+
+        Ok(HttpResponse::Ok()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
+    } else {
+        let body = json!({
+            "success": false,
+            "reason": "forbidden"
+        });
+        let body = serde_json::to_string(&body).unwrap();
+
+        Ok(HttpResponse::Forbidden()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
+    }
+}
+
 #[get("/api/draft")]
 pub async fn api_draft<'a>(
     draft_data: web::Query<ApiDraftData>,
