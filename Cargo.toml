@@ -1,22 +1,26 @@
 [package]
-name = "circus-backend"
+name = "ict-backend"
 version = "0.1.0"
 authors = ["Szymon Walter <waltersz@protonmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+webpki-roots = "0.17"
+webpki = "0.21"
+lettre = "0.9"
+chrono = "0.4"
 rand = "0.7"
 clap = "2.33"
 futures = "0.3"
 futures-util = "0.3"
 actix-http = "1.0"
+awc = "1.0"
 actix-rt = "1.0"
 actix-identity = "0.2"
+actix-multipart = "0.2"
 tokio = { version = "0.2", features = ["full"] }
 tokio-postgres = "0.5"
-postgres-types = "0.1"
+postgres-types = { version = "0.1", features = ["with-chrono-0_4"] }
 postgres-native-tls = "0.3"
 pulldown-cmark = "0.7"
 rust-argon2 = "0.8"
@@ -24,6 +28,9 @@ serde = "1.0"
 serde_json = "1.0"
 pancurses = "0.16"
 ron = "0.5"
+rustls = "0.16"
+actix-web-middleware-redirect-https = "1.0"
+base64 = "0.13"
 
 [dependencies.actix-web]
 version = "2.0"

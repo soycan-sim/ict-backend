@@ -1,13 +1,12 @@
 #![feature(async_closure)]
 
-use std::process;
-
-use clap::{App as Clapp, Arg, ArgMatches, SubCommand};
+use clap::{App as Clapp, SubCommand};
 use tokio_postgres::NoTls;
-
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpServer};
+use actix_web::FromRequest;
 use arrayvec::ArrayString;
+use actix_web_middleware_redirect_https::RedirectHTTPS;
 
 use crate::error::{Error, Result};
 
@@ -22,8 +21,6 @@ pub mod web;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
-const ABOUT: &str = "circus-backend is an open source webservice framework";
-const AFTER_HELP: &str = "This program was made possible by https://Zirkus-Internationale.de.";
 
 fn psql_escape<S: AsRef<str>>(string: S) -> String {
     string.as_ref().replace("\\", "\\\\")
@@ -31,239 +28,23 @@ fn psql_escape<S: AsRef<str>>(string: S) -> String {
 
 fn psql_config(password: &str) -> String {
     format!(
-        "host=localhost port=5432 dbname=circus user=circus password='{}'",
+        "host=localhost port=5432 dbname=ict user=ict password='{}'",
         psql_escape(password)
     )
 }
 
-fn init_user<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
-    let mut child = process::Command::new("useradd")
-        .arg("-m")
-        .arg("-d")
-        .arg("/var/code-circus")
-        .arg("-U")
-        .arg("-G")
-        .arg("tty,lp,disk,wheel,floppy,audio,cdrom,dialout,video,cdrw,usb,input,plugdev")
-        .arg("circus")
-        .spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(Error::Useradd);
-    }
-
-    let mut child = process::Command::new("passwd").arg("circus").spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(Error::Useradd);
-    }
-
-    let mut child = process::Command::new("sudo")
-        .arg("-u")
-        .arg("mkdir")
-        .arg("/var/code-circus/public")
-        .spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(Error::Useradd);
-    }
-
-    let mut child = process::Command::new("sudo")
-        .arg("-u")
-        .arg("circus")
-        .arg("git")
-        .arg("init")
-        .arg("/var/code-circus/public")
-        .spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(Error::Useradd);
-    }
-
-    let mut child = process::Command::new("passwd").arg("circus").spawn()?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Useradd)
-    }
-}
-
-fn init_db<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
-    let mut child = process::Command::new("createuser")
-        .arg("-d")
-        .arg("-r")
-        .arg("circus")
-        .spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        return Err(Error::CreateDb);
-    }
-
-    let mut child = process::Command::new("createdb")
-        .arg("-O")
-        .arg("circus")
-        .arg("-U")
-        .arg("circus")
-        .arg("-W")
-        .arg("circus")
-        .arg("the default and main CODE_Circus database")
-        .spawn()?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::CreateDb)
-    }
-}
-
-async fn init_tables<'a, 'b>(_matches: &'a ArgMatches<'b>) -> Result<()> {
-    let window = pancurses::initscr();
-    let password = term::prompt(&window, Some("Password: "), true);
-    pancurses::endwin();
-    let password = password.unwrap_or_else(String::new);
-    let data = web::ServerData::new(psql_config(&password), NoTls).await?;
-    data.client
-        .execute(
-            "create table if not exists articles
-                         (
-                             id serial primary key not null,
-                             path text not null,
-                             title text not null,
-                             cdate date not null,
-                             udate date,
-                             author text
-                         )",
-            &[],
-        )
-        .await?;
-    data.client
-        .execute(
-            "create table if not exists users
-                         (
-                             id serial primary key not null,
-                             username text not null,
-                             pwhash text not null,
-                             email text not null,
-                             firstname text,
-                             lastname text
-                         )",
-            &[],
-        )
-        .await?;
-    data.client
-        .execute(
-            "create table if not exists employees
-                         (
-                             id serial primary key not null,
-                             uid integer references users (id) not null
-                         )",
-            &[],
-        )
-        .await?;
-    data.client
-        .execute(
-            "create table if not exists admins
-                         (
-                             id serial primary key not null,
-                             uid integer references users (id) not null
-                         )",
-            &[],
-        )
-        .await?;
-    Ok(())
-}
-
-fn git_add<'a, 'b>(matches: &'a ArgMatches<'b>) -> Result<()> {
-    let mut child = process::Command::new("git")
-        .arg("add")
-        .args(matches.values_of_lossy("file").into_iter().flatten())
-        .spawn()?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::CreateDb)
-    }
-}
-
-fn git_commit<'a, 'b>(matches: &'a ArgMatches<'b>) -> Result<()> {
-    let mut child = process::Command::new("git")
-        .arg("commit")
-        .args(
-            matches
-                .value_of_lossy("message")
-                .as_ref()
-                .map(AsRef::as_ref),
-        )
-        .spawn()?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::CreateDb)
-    }
-}
-
 #[actix_rt::main]
 async fn main() -> Result<()> {
-    let matches = Clapp::new("circus-backend")
+    let matches = Clapp::new("ict-backend")
         .version(VERSION)
         .author(AUTHORS)
-        .about(ABOUT)
-        .after_help(AFTER_HELP)
-        .subcommand(SubCommand::with_name("init-db").about(
-            "initializes the circus database with the circus user (must \
-                    be ran as `postgres`)",
-        ))
-        .subcommand(
-            SubCommand::with_name("init-tables").about("initializes the circus database tables"),
-        )
-        .subcommand(
-            SubCommand::with_name("init-user")
-                .about("initializes the circus user (must be ran as `root`)"),
-        )
-        .subcommand(
-            SubCommand::with_name("add")
-                .about(
-                    "adds the files specified in the command line to the staging \
-                    area in the current working directory",
-                )
-                .arg(
-                    Arg::with_name("file")
-                        .takes_value(true)
-                        .required(true)
-                        .multiple(true)
-                        .allow_hyphen_values(true)
-                        .value_name("FILE"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("commit")
-                .about(
-                    "commits the files in the staging area in the current working \
-                    directory to /var/circus-www",
-                )
-                .arg(
-                    Arg::with_name("message")
-                        .short("m")
-                        .long("message")
-                        .takes_value(true)
-                        .allow_hyphen_values(true)
-                        .value_name("MESSAGE"),
-                ),
-        )
         .subcommand(SubCommand::with_name("start").about(
-            "starts the circus webservice in the current directory (must \
-                    be ran as `circus`)",
+            "starts the ict webservice in the current directory (must \
+                    be ran as `ict`)",
         ))
         .get_matches();
 
     match matches.subcommand() {
-        ("init-db", Some(matches)) => init_db(matches),
-        ("init-tables", Some(matches)) => init_tables(matches).await,
-        ("init-user", Some(matches)) => init_user(matches),
-        ("add", Some(matches)) => git_add(matches),
-        ("commit", Some(matches)) => git_commit(matches),
         ("start", Some(_matches)) => {
             let window = pancurses::initscr();
             let password = term::prompt(&window, Some("Password: "), true);
@@ -276,14 +57,27 @@ async fn main() -> Result<()> {
                 );
             });
             let data = move || web::ServerData::new(psql_config(&password), NoTls);
+            let mut server_config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+            let mut file = std::io::BufReader::new(std::fs::File::open("example.com_ssl_certificate.cer")?);
+            let certs = rustls::internal::pemfile::certs(&mut file).unwrap();
+            let mut file = std::io::BufReader::new(std::fs::File::open("example.com_private_key.key")?);
+            let mut private_keys = rustls::internal::pemfile::rsa_private_keys(&mut file).unwrap();
+            let private_key = private_keys.pop().unwrap();
+            server_config.set_single_cert(certs, private_key).unwrap();
             HttpServer::new(move || {
                 App::new()
                     .data_factory(data)
                     .wrap(IdentityService::new(
                         CookieIdentityPolicy::new(&[0; 64])
                             .name("auth-cookie")
-                            .secure(false),
+                            .secure(true),
                     ))
+                    .app_data(
+                        actix_web::web::Json::<web::ClientResource>::configure(|cfg| {
+                            cfg.limit((1 << 31) - 1)
+                        })
+                    )
+                    .wrap(RedirectHTTPS::default())
                     .service(auth::create)
                     .service(auth::login)
                     .service(auth::logout)
@@ -303,14 +97,25 @@ async fn main() -> Result<()> {
                     .service(web::api_whoami)
                     .service(web::api_l10n)
                     .service(web::api_t9n)
+                    .service(web::api_neworder)
+                    .service(web::api_endorder)
+                    .service(web::api_addclass)
                     .service(web::root)
                     .service(web::index)
                     .service(web::articles)
                     .service(web::stylesheet)
                     .service(web::javascript)
                     .service(web::wasm)
+                    .service(web::static_jpg)
+                    .service(web::static_png)
+                    .service(web::static_svg)
+                    .service(web::static_pdf)
+                    .service(web::static_mp4)
+                    .service(web::resource)
             })
-            .bind("127.0.0.1:8080")?
+            // .bind("127.0.0.1:8080")?
+            .bind("0.0.0.0:80")?
+            .bind_rustls("0.0.0.0:443", server_config)?
             .run()
             .await
             .map_err(From::from)

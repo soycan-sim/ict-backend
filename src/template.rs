@@ -21,6 +21,9 @@ enum Pattern {
     Admin,
     Drafts,
     AdminPanel,
+    ClassPanel,
+    Schedule,
+    ScheduleEditor,
     Me(String),
     Path(String),
     Positional(usize),
@@ -74,6 +77,12 @@ impl FromStr for Pattern {
             Ok(Pattern::Drafts)
         } else if pattern == "admin-panel" {
             Ok(Pattern::AdminPanel)
+        } else if pattern == "class-panel" {
+            Ok(Pattern::ClassPanel)
+        } else if pattern == "schedule" {
+            Ok(Pattern::Schedule)
+        } else if pattern == "schedule_editor" {
+            Ok(Pattern::ScheduleEditor)
         } else if pattern.starts_with("me.") {
             Ok(Pattern::Me(pattern[3..].to_string()))
         } else if pattern.starts_with('/') {
@@ -273,6 +282,190 @@ impl Pattern {
                     }
                 }
             }
+            Pattern::ClassPanel => {
+                match identity.identity() {
+                    Some(identity) => {
+                        let admin = client.query_opt(
+                            "select id from admins where uid = \
+                             (select id as uid from users where username = $1)",
+                            &[&identity]
+                        ).await?;
+                        if admin.is_none() {
+                            return Err(Error::AuthorizationFailed);
+                        }
+
+                        let orders = client.query(
+                            "select
+                                   classes.title,
+                                   classes.etime,
+                                   orders.count,
+                                   orders.firstname,
+                                   orders.lastname,
+                                   orders.email
+                                 from orders, classes
+                                 where classes.etime > current_timestamp
+                                     and classes.id = orders.class",
+                            &[]
+                        ).await?;
+                        let mut select = format!("<table>\n");
+                        write!(select, "<tr>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(schedule_class)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(schedule_etime)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_firstname)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_lastname)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "<th>{{{{{{l10n(account_email)}}}}}}</th>\n").expect("couldn't write to string");
+                        write!(select, "</tr>\n").expect("couldn't write to string");
+                        for order in orders {
+                            let datetime = order.get::<_, chrono::DateTime<chrono::offset::Local>>("etime");
+                            let date = datetime.format("%d-%m-%Y");
+                            let day = &lang[&format!("dayno_{}", datetime.format("%u"))];
+                            let time = datetime.format("%H:%M");
+                            write!(select, "<tr>\n").expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", order.get::<_, &str>("title")).expect("couldn't write to string");
+                            write!(select, "<td>{}, {} {}</td>\n", day, date, time).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", order.get::<_, &str>("firstname")).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", order.get::<_, &str>("lastname")).expect("couldn't write to string");
+                            write!(select, "<td>{}</td>\n", order.get::<_, &str>("email")).expect("couldn't write to string");
+                            write!(select, "</tr>\n").expect("couldn't write to string");
+                        }
+                        write!(select, "</table>\n").expect("couldn't write to string");
+                        Ok(select)
+                    }
+                    None => {
+                        Err(Error::AuthorizationFailed)
+                    }
+                }
+            }
+            Pattern::Schedule => {
+                let classes = client.query(
+                    "select classes.id,
+                            classes.title as title,
+                            users.firstname as firstname,
+                            users.lastname as lastname,
+                            (classes.price::numeric * 100)::integer as price,
+                            classes.etime,
+                            extract(epoch from classes.elength)::int8 as eseconds,
+                            classes.count < classes.maxcount as available, 
+                            classes.language,
+                            classes.description,
+                            classes.image,
+                            classes.hyperlink
+                        from classes, users
+                        where classes.etime > (current_timestamp + '30 minutes')
+                            and users.id = classes.teacher
+                        order by classes.etime",
+                    &[],
+                ).await?;
+
+                let mut select = format!("<div class=\"classes\">\n");
+                for class in classes {
+                    let price = class.get::<_, i32>("price");
+                    let primary = price / 100;
+                    let secondary = price % 100;
+                    let price = if secondary > 0 {
+                        format!("{},{:02}€", primary, secondary)
+                    } else {
+                        format!("{},-€", primary)
+                    };
+                    let available = class.get::<_, bool>("available");
+                    let availablemark = if available { "&check;". to_string() } else { "&cross;".to_string() };
+                    let datetime = class.get::<_, chrono::DateTime<chrono::offset::Local>>("etime");
+                    let date = datetime.format("%d-%m-%Y");
+                    let day = &lang[&format!("dayno_{}", datetime.format("%u"))];
+                    let time = datetime.format("%H:%M");
+                    let class_id = class.get::<_, i32>("id");
+                    write!(select, "<div id=\"class-{}\" class=\"class\">\n", class_id).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-title\">{}</div>\n", class.get::<_, &str>("title")).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-language\"><img src=\"/static/{}.svg\" height=\"16\"></div>\n", class.get::<_, &str>("language")).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-image\"><img src=\"{}\"></div>\n", class.get::<_, &str>("image")).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-description\">{}</div>\n", class.get::<_, &str>("description")).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-specs\">\n").expect("couldn't write to string");
+                    // write!(select, "<div class=\"class-teacher\">{{{{{{l10n(schedule_with)}}}}}}{}", class.get::<_, &str>("firstname")).expect("couldn't write to string");
+                    // write!(select, " {}</div>\n", class.get::<_, &str>("lastname")).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-price\">{}</div>\n", price).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-weekday\">{}</div>", day).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-datetime\">{} {} (UTC+1)</div>\n", date, time).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-duration\">{} {{{{{{l10n(schedule_minutes)}}}}}}</div>\n", class.get::<_, i64>("eseconds") / 60).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-available\">{{{{{{l10n(schedule_available)}}}}}}: {}</div>\n", availablemark).expect("couldn't write to string");
+                    write!(select, "<div class=\"class-checkout\"><button {} onclick=\"show_checkout({})\">{{{{{{l10n(schedule_book)}}}}}}</button></div>\n", if available { "" } else { "disabled" }, class_id).expect("couldn't write to string");
+                    write!(select, "<div id=\"paypal-button-container-{}\"></div>\n", class_id).expect("couldn't write to string");
+                    write!(select, "</div>\n").expect("couldn't write to string");
+                    write!(select, "</div>\n").expect("couldn't write to string");
+                }
+                write!(select, "</div>\n").expect("couldn't write to string");
+                Ok(select)
+            }
+            Pattern::ScheduleEditor => {
+                match identity.identity() {
+                    Some(identity) => {
+                        let admin = client.query_opt(
+                            "select id from admins where uid = \
+                             (select id as uid from users where username = $1)",
+                            &[&identity]
+                        ).await?;
+                        if admin.is_none() {
+                            return Err(Error::AuthorizationFailed);
+                        }
+                        
+                        let employees = client.query(
+                            "select users.firstname as firstname, \
+                                    users.lastname as lastname, \
+                                    users.id as id \
+                                 from users, employees \
+                                 where employees.uid = users.id",
+                            &[],
+                        ).await?;
+                        
+                        let mut select = format!("");
+                        write!(select, "<form name=\"upload-image\" id=\"upload-image\">\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"image\">{{{{{{l10n(schedule_upload_image)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"file\" name=\"image\" id=\"image\"/>\n").expect("couldn't write to string");
+                        write!(select, "<input type=\"button\" name=\"submit\" id=\"submit\" value=\"Upload\" onclick=\"upload_resource()\"/>\n").expect("couldn't write to string");
+                        write!(select, "</form>\n").expect("couldn't write to string");
+                        write!(select, "<form name=\"schedule-form\" id=\"schedule-form\" action=\"/api/addclass\" method=\"post\">\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"title\">{{{{{{l10n(schedule_class)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"text\" name=\"title\" id=\"title\"/>\n").expect("couldn't write to string");
+                        // NOTE: hardcoded languages
+                        write!(select, "<br><label for=\"language\">{{{{{{l10n(schedule_language)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<select name=\"language\" id=\"language\" required=true>").expect("couldn't write to string");
+                        write!(select, "<option value=\"de\">de</option>").expect("couldn't write to string");
+                        write!(select, "<option value=\"pl\">pl</option>").expect("couldn't write to string");
+                        write!(select, "<option value=\"en\">en</option>").expect("couldn't write to string");
+                        write!(select, "</select>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"teacher\">{{{{{{l10n(schedule_teacher)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<select name=\"teacher\" id=\"teacher\" required=true>").expect("couldn't write to string");
+                        for employee in employees {
+                            write!(select, "<option value=\"{}\">", employee.get::<_, i32>("id")).expect("couldn't write to string");
+                            write!(select, "{} {}", employee.get::<_, &str>("firstname"), employee.get::<_, &str>("lastname")).expect("couldn't write to string");
+                            write!(select, "</option>").expect("couldn't write to string");
+                        }
+                        // query for users with `employee` privilege
+                        write!(select, "</select>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"description\">{{{{{{l10n(schedule_description)}}}}}}</label><br>").expect("couldn't write to string");
+                        write!(select, "<textarea name=\"description\" id=\"description\" cols=\"100\" rows=\"6\"></textarea>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"image\">{{{{{{l10n(schedule_image)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"text\" name=\"image\" id=\"image\" required=true value=\"/static/hatha-yoga.jpg\"/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"price\">{{{{{{l10n(schedule_price)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"number\" name=\"price\" id=\"price\" min=\"0.01\" required=true step=\"0.01\"/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"edate\">{{{{{{l10n(schedule_edateonly)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"date\" name=\"edate\" id=\"edate\" required=true/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"etime\">{{{{{{l10n(schedule_etimeonly)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"time\" name=\"etime\" id=\"etime\" required=true/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"elength\">{{{{{{l10n(schedule_elength)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"time\" name=\"elength\" id=\"elength\" required=true/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"maxcount\">{{{{{{l10n(schedule_maxcount)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"number\" name=\"maxcount\" id=\"maxcount\" min=\"0\" max=\"65535\" required=false step=\"1\"/>\n").expect("couldn't write to string");
+                        write!(select, "<br><label for=\"hyperlink\">{{{{{{l10n(schedule_hyperlink)}}}}}}</label>").expect("couldn't write to string");
+                        write!(select, "<input type=\"text\" name=\"hyperlink\" id=\"hyperlink\" required=true/>\n").expect("couldn't write to string");
+                        write!(select, "<input type=\"submit\" value=\"{{{{{{l10n(schedule_submit)}}}}}}\"/>\n").expect("couldn't write to string");
+                        write!(select, "</form>\n").expect("couldn't write to string");
+                        Ok(select)
+                    }
+                    None => {
+                        return Err(Error::AuthorizationFailed);
+                    }
+                }
+            }
             Pattern::Me(field) => {
                 if field == "pwhash" {
                     Ok("No passwords for you!".to_string())
@@ -347,9 +540,8 @@ impl Pattern {
                 contents.and_then(async move |(article, contents)| {
                     let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                     Ok(format!(
-                        "<article><h1>{}</h1>{}{}<br/>{}</article>",
+                        "<article><h1>{}</h1>{}<br/>{}</article>",
                         article.get::<_, &str>("title"),
-                        article.get::<_, &str>("date"),
                         by_author,
                         contents,
                     ))
@@ -362,10 +554,9 @@ impl Pattern {
                 let article = rows.len().checked_sub(no).and_then(|no| rows.get(no)).ok_or_else(|| Error::ResourceNotFound(format!("preview~{}", no)))?;
                 let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
-                    "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
+                    "<article><h2><a href=\"{0}\">{1}</a></h2><a href=\"{0}\">{{{{{{l10n(read_more)}}}}}}</a><br>{2}</article>",
                     article.get::<_, &str>("path"),
                     article.get::<_, &str>("title"),
-                    article.get::<_, &str>("date"),
                     by_author,
                 ))
             }
@@ -399,9 +590,8 @@ impl Pattern {
                     contents.and_then(async move |(article, contents)| {
                         let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                         Ok(format!(
-                            "<article><h1>{}</h1>{}{}<br/>{}</article>",
+                            "<article><h1>{}</h1>{}<br/>{}</article>",
                             article.get::<_, &str>("title"),
-                            article.get::<_, &str>("date"),
                             by_author,
                             contents,
                         ))
@@ -416,10 +606,9 @@ impl Pattern {
                     .await?;
                 let by_author = author(client, article.get::<_, i32>("author")).await?.map(|author| format!(" {{{{{{l10n(by_author)}}}}}} {}", author)).unwrap_or_else(String::new);
                 Ok(format!(
-                    "<article><h2><a href=\"{}\">{}</a></h2>{}{}</article>",
+                    "<article><h2><a href=\"{0}\">{1}</a></h2><a href=\"{0}\">{{{{{{l10n(read_more)}}}}}}</a><br>{2}</article>",
                     article.get::<_, &str>("path"),
                     article.get::<_, &str>("title"),
-                    article.get::<_, &str>("date"),
                     by_author,
                 ))
             }

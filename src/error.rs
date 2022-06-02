@@ -1,4 +1,5 @@
-use actix_web::ResponseError;
+use actix_http::client::SendRequestError;
+use actix_web::{error::JsonPayloadError, ResponseError};
 use ron::de::Error as RonError;
 use serde_json::Error as JsonError;
 use std::fmt::{self, Display};
@@ -10,6 +11,9 @@ use tokio_postgres::Error as DbError;
 pub enum Error {
     Ron(RonError),
     Json(JsonError),
+    JsonPayload(JsonPayloadError),
+    AwcJsonPayload(awc::error::JsonPayloadError),
+    SendRequest(SendRequestError),
     Db(DbError),
     Io(IoError),
     Template(ParseIntError),
@@ -32,18 +36,15 @@ impl Display for Error {
         match self {
             Error::Ron(err) => Display::fmt(err, f),
             Error::Json(err) => Display::fmt(err, f),
+            Error::JsonPayload(err) => Display::fmt(err, f),
+            Error::AwcJsonPayload(err) => Display::fmt(err, f),
+            Error::SendRequest(err) => Display::fmt(err, f),
             Error::Db(err) => Display::fmt(err, f),
             Error::Io(err) => Display::fmt(err, f),
             Error::Template(err) => write!(f, "template error: {}", err),
             Error::Cmdline(err) => write!(f, "command line error: {}", err),
-            Error::Useradd => write!(
-                f,
-                "creating the user `circus` failed (`useradd ... circus`)"
-            ),
-            Error::CreateDb => write!(
-                f,
-                "creating the database `circus` failed (`createdb ... circus`)"
-            ),
+            Error::Useradd => write!(f, "creating the user `ict` failed (`useradd ... ict`)"),
+            Error::CreateDb => write!(f, "creating the database `ict` failed (`createdb ... ict`)"),
             Error::ResourceNotFound(res) => write!(f, "resource not found: {:?}", res),
             Error::IllegalResource(res) => write!(f, "illegal resources: {:?}", res),
             Error::Argon2(err) => write!(f, "an error occured while trying authenticate: {}", err),
@@ -92,6 +93,24 @@ impl From<RonError> for Error {
 impl From<JsonError> for Error {
     fn from(err: JsonError) -> Error {
         Error::Json(err)
+    }
+}
+
+impl From<JsonPayloadError> for Error {
+    fn from(err: JsonPayloadError) -> Error {
+        Error::JsonPayload(err)
+    }
+}
+
+impl From<awc::error::JsonPayloadError> for Error {
+    fn from(err: awc::error::JsonPayloadError) -> Error {
+        Error::AwcJsonPayload(err)
+    }
+}
+
+impl From<SendRequestError> for Error {
+    fn from(err: SendRequestError) -> Error {
+        Error::SendRequest(err)
     }
 }
 

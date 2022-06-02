@@ -33,7 +33,7 @@ impl Language {
 
 impl<'a, S> Index<&'a S> for Language
 where
-    S: Eq + Hash + Debug,
+    S: Eq + Hash + Debug + ?Sized,
     String: Borrow<S>,
 {
     type Output = str;

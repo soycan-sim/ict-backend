@@ -3,7 +3,7 @@ use std::path::Path;
 use actix_http::HttpMessage;
 use actix_web::{get, http, post, web, HttpRequest, HttpResponse, Responder};
 use tokio::fs;
-
+use chrono::offset::TimeZone;
 use actix_identity::Identity;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -40,6 +40,21 @@ pub struct SetAdminData {
 pub struct SetEmployeeData {
     value: bool,
     uid: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddClassData {
+    title: String,
+    teacher: i32,
+    price: f32,
+    edate: String,
+    etime: String,
+    elength: String,
+    maxcount: Option<i32>,
+    language: String,
+    description: String,
+    image: String,
+    hyperlink: String,
 }
 
 fn pathify(string: &str) -> (String, String) {
@@ -405,6 +420,156 @@ pub async fn api_setemployee<'a>(
         Ok(HttpResponse::Ok()
            .header(http::header::CONTENT_TYPE, "application/json")
            .body(body))
+    } else {
+        let body = json!({
+            "success": false,
+            "reason": "forbidden"
+        });
+        let body = serde_json::to_string(&body).unwrap();
+
+        Ok(HttpResponse::Forbidden()
+           .header(http::header::CONTENT_TYPE, "application/json")
+           .body(body))
+    }
+}
+
+#[post("/api/addclass")]
+pub async fn api_addclass<'a>(
+    class_data: web::Form<AddClassData>,
+    _req: HttpRequest,
+    identity: Identity,
+    data: web::Data<ServerData<'a>>,
+) -> Result<impl Responder> {
+    if let Some(username) = identity.identity() {
+        let admin = data.client.query_opt(
+            "select id from admins where uid = \
+             (select id as uid from users where username = $1)",
+            &[&username]
+        ).await?;
+        if admin.is_none() {
+            let body = json!({
+                "success": false,
+                "reason": "forbidden"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::Forbidden()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        }
+
+        let teacher = data
+            .client
+            .query_opt(
+                "select id from employees where employees.uid = $1",
+                &[&class_data.teacher],
+            )
+            .await?;
+
+        if teacher.is_none() {
+            let body = json!({
+                "success": false,
+                "reason": "forbidden"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::Forbidden()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        }
+
+        let date = if let Ok(date) = chrono::NaiveDate::parse_from_str(&class_data.edate, "%Y-%m-%d") {
+            date
+        } else {
+            let body = json!({
+                "success": false,
+                "reason": "bad-request"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::BadRequest()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        };
+        let time = if let Ok(time) = chrono::NaiveTime::parse_from_str(&class_data.etime, "%H:%M") {
+            time
+        } else {
+            let body = json!({
+                "success": false,
+                "reason": "bad-request"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::BadRequest()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        };
+        let duration = if let Ok(duration) = chrono::NaiveTime::parse_from_str(&class_data.elength, "%H:%M") {
+            duration
+        } else {
+            let body = json!({
+                "success": false,
+                "reason": "bad-request"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::BadRequest()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        };
+        // NOTE: hardcoded UTC+1
+        const HOUR: i32 = 3600;
+        let datetime = chrono::offset::FixedOffset::from_offset(
+                &chrono::offset::FixedOffset::east(1 * HOUR)
+            )
+            .from_utc_date(&date)
+            .and_time(time);
+        let datetime = if let Some(datetime) = datetime {
+            datetime
+        } else {
+            let body = json!({
+                "success": false,
+                "reason": "bad-request"
+            });
+            let body = serde_json::to_string(&body).unwrap();
+
+            return Ok(HttpResponse::BadRequest()
+               .header(http::header::CONTENT_TYPE, "application/json")
+               .body(body));
+        };
+
+        data
+            .client
+            .execute(
+                "insert into classes \
+                        (title, teacher, price, cdate, etime, \
+                         elength, count, maxcount, language) \
+                     values \
+                        ($1, $2, $3::float4::numeric::money, current_date, $4, $5::text::interval, $6, $7, $8)",
+                &[
+                    &class_data.title,
+                    &class_data.teacher,
+                    &class_data.price,
+                    &datetime,
+                    &duration.format("%H:%M").to_string(),
+                    &0_i32,
+                    &class_data.maxcount.unwrap_or(65535),
+                    &"de",
+                ],
+            )
+            .await?;
+
+        // let body = json!({
+        //     "success": true
+        // });
+        // let body = serde_json::to_string(&body).unwrap();
+
+        // Ok(HttpResponse::Ok()
+        //    .header(http::header::CONTENT_TYPE, "application/json")
+        //    .body(body))
+        Ok(HttpResponse::SeeOther()
+            .header("Location", "/schedule.html")
+            .finish())
     } else {
         let body = json!({
             "success": false,

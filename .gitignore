@@ -2,3 +2,6 @@
 .*sw?
 /private/waltersz
 /public/articles/*.md
+/live
+/secret
+/smtp-*
